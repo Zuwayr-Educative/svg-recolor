@@ -27,7 +27,7 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #10265D;
             color: white;
             padding: 24px;
             text-align: center;
@@ -225,7 +225,7 @@
         }
 
         .add-color-btn {
-            background: #667eea;
+            background: #10265D;
             color: white;
             border: none;
             padding: 10px 16px;
@@ -236,7 +236,7 @@
         }
 
         .add-color-btn:hover {
-            background: #5a6fd8;
+            background: #10265D;
         }
 
         .action-buttons {
@@ -256,7 +256,7 @@
         }
 
         .btn-primary {
-            background: #667eea;
+            background: #10265D;
             color: white;
         }
 
@@ -379,7 +379,6 @@
                     <div class="color-picker-container">
                         <input type="color" id="color-picker" class="color-picker" value="#667eea">
                         <button class="add-color-btn" id="add-color-btn">Add Color</button>
-                        <button class="btn-secondary" id="load-preset">Load Preset</button>
                     </div>
                 </div>
 
@@ -472,7 +471,6 @@
                 this.addColorBtn = document.getElementById('add-color-btn');
                 this.downloadBtn = document.getElementById('download-btn');
                 this.resetBtn = document.getElementById('reset-btn');
-                this.loadPresetBtn = document.getElementById('load-preset');
                 this.colorStatus = document.getElementById('color-status');
                 this.autoRecolorBtn = document.getElementById('auto-recolor-btn');
                 this.autoRecolorV2Btn = document.getElementById('auto-recolor-v2-btn');
@@ -496,7 +494,6 @@
                 this.addColorBtn.addEventListener('click', () => this.addColorToPalette());
                 this.downloadBtn.addEventListener('click', () => this.downloadSVG());
                 this.resetBtn.addEventListener('click', () => this.reset());
-                this.loadPresetBtn.addEventListener('click', () => this.loadPresetPalette());
                 this.autoRecolorBtn.addEventListener('click', () => this.autoRecolorToPalette());
                 this.autoRecolorV2Btn.addEventListener('click', () => this.autoRecolorV2ToPalette());
                 this.restoreOriginalBtn.addEventListener('click', () => this.restoreOriginal());
@@ -538,13 +535,142 @@
                 }
             }
 
+            isBase64SVG(data) {
+                // Check if the data starts with 'data:image/svg+xml;base64,'
+                if (typeof data === 'string' && data.startsWith('data:image/svg+xml;base64,')) {
+                    return true;
+                }
+                return false;
+            }
+
+            extractNestedBase64SVG(svgString) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(svgString, 'image/svg+xml');
+                    const images = doc.getElementsByTagName('image');
+                    let modified = false;
+
+                    for (let img of images) {
+                        const href = img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+                        if (href && this.isBase64SVG(href)) {
+                            const decoded = this.decodeBase64SVG(href);
+                            if (decoded && decoded.includes('<svg')) {
+                                // Create a temporary div to parse the SVG
+                                const tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = decoded;
+                                const svgElement = tempDiv.querySelector('svg');
+                                
+                                if (svgElement) {
+                                    // Copy attributes from image to the new SVG
+                                    for (let i = 0; i < img.attributes.length; i++) {
+                                        const attr = img.attributes[i];
+                                        if (attr.name !== 'xlink:href' && attr.name !== 'xmlns:xlink') {
+                                            svgElement.setAttribute(attr.name, attr.value);
+                                        }
+                                    }
+                                    
+                                    // Replace the image with the decoded SVG
+                                    img.parentNode.replaceChild(svgElement, img);
+                                    modified = true;
+                                }
+                            }
+                        }
+                    }
+
+                    return modified ? new XMLSerializer().serializeToString(doc.documentElement) : svgString;
+                } catch (error) {
+                    console.error('Error processing nested base64 SVG:', error);
+                    return svgString;
+                }
+            }
+
+            decodeBase64SVG(base64Data) {
+                try {
+                    // Remove the data URL prefix
+                    const base64String = base64Data.split('base64,')[1];
+                    if (!base64String) return null;
+                    
+                    // Decode the base64 string
+                    const decodedString = atob(base64String);
+                    return decodedString;
+                } catch (error) {
+                    console.error('Error decoding base64 SVG:', error);
+                    return null;
+                }
+            }
+
             processFile(file) {
                 const reader = new FileReader();
+                
                 reader.onload = (e) => {
-                    this.originalSVG = e.target.result;
-                    this.currentSVG = e.target.result;
-                    this.displayInteractiveSVG();
+                    try {
+                        let fileContent = e.target.result;
+                        
+                        // First, try to read as text
+                        if (typeof fileContent === 'string') {
+                            // Process any nested base64 SVGs in image elements
+                            fileContent = this.extractNestedBase64SVG(fileContent);
+                            
+                            // Check if it's a base64 data URL
+                            if (this.isBase64SVG(fileContent)) {
+                                const decodedSVG = this.decodeBase64SVG(fileContent);
+                                if (decodedSVG && decodedSVG.includes('<svg')) {
+                                    this.originalSVG = decodedSVG;
+                                    this.currentSVG = decodedSVG;
+                                    this.displayInteractiveSVG();
+                                    return;
+                                }
+                            }
+                            
+                            // If it's not base64 but contains SVG, use it directly
+                            if (fileContent.includes('<svg')) {
+                                this.originalSVG = fileContent;
+                                this.currentSVG = fileContent;
+                                this.displayInteractiveSVG();
+                                return;
+                            }
+                        }
+                        
+                        // If we get here, try reading as binary
+                        const binaryReader = new FileReader();
+                        binaryReader.onload = (binaryEvent) => {
+                            try {
+                                const binaryData = binaryEvent.target.result;
+                                const decoder = new TextDecoder('utf-8');
+                                const text = decoder.decode(new Uint8Array(binaryData));
+                                
+                                if (text.includes('<svg')) {
+                                    this.originalSVG = text;
+                                    this.currentSVG = text;
+                                    this.displayInteractiveSVG();
+                                } else {
+                                    throw new Error('File does not contain valid SVG data');
+                                }
+                            } catch (error) {
+                                console.error('Error processing binary data:', error);
+                                alert('Error: Could not process the file. Please make sure it is a valid SVG file.');
+                            }
+                        };
+                        
+                        binaryReader.onerror = (error) => {
+                            console.error('Error reading binary data:', error);
+                            alert('Error reading file. Please try again.');
+                        };
+                        
+                        binaryReader.readAsArrayBuffer(file);
+                        
+                    } catch (error) {
+                        console.error('Error processing file:', error);
+                        alert('Error processing file. Please try again.');
+                    }
                 };
+                
+                reader.onerror = (error) => {
+                    console.error('Error reading file:', error);
+                    alert('Error reading file. Please try again.');
+                };
+                
+                // First try reading as text
                 reader.readAsText(file);
             }
 
@@ -740,17 +866,6 @@
                 this.updatePaletteDisplay();
             }
 
-            loadPresetPalette() {
-                const presets = [
-                    ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57'],
-                    ['#2d3436', '#636e72', '#ddd', '#74b9ff', '#0984e3'],
-                    ['#fd79a8', '#fdcb6e', '#6c5ce7', '#74b9ff', '#00b894'],
-                    ['#e17055', '#fdcb6e', '#fd79a8', '#6c5ce7', '#74b9ff']
-                ];
-                const randomPreset = presets[Math.floor(Math.random() * presets.length)];
-                this.palette = [...randomPreset];
-                this.updatePaletteDisplay();
-            }
 
             extractColors() {
                 this.currentColors.clear();

@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SVG Recolor (Strict Palette)</title>
+    <style>
+      :root {
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Arial;
+      }
+      body {
+        margin: 0;
+        background: #0b0e14;
+        color: #e9eefc;
+      }
+      header {
+        padding: 18px 20px;
+        border-bottom: 1px solid #1f2a44;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+      }
+      header h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 650;
+        letter-spacing: 0.2px;
+      }
+      header .sub {
+        opacity: 0.8;
+        font-size: 13px;
+      }
+      main {
+        padding: 18px 20px;
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 16px;
+      }
+      @media (max-width: 980px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .card {
+        background: #0f1524;
+        border: 1px solid #1f2a44;
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      }
+      .card h2 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        opacity: 0.95;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .row > * {
+        flex: 0 0 auto;
+      }
+
+      input[type="file"] {
+        display: block;
+      }
+      button {
+        background: #1f6feb;
+        border: 0;
+        color: white;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #22304f;
+      }
+      button.danger {
+        background: #b42318;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 980px) {
+        .split {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .preview {
+        background: #0b0e14;
+        border: 1px dashed #2b3b62;
+        border-radius: 12px;
+        min-height: 260px;
+        padding: 10px;
+        overflow: auto;
+      }
+      .preview .label {
+        font-size: 12px;
+        opacity: 0.8;
+        margin-bottom: 8px;
+      }
+
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .swatch {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #0b0e14;
+        border: 1px solid #24365d;
+        padding: 6px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+      }
+      .chip {
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", monospace;
+      }
+      .small {
+        font-size: 12px;
+        opacity: 0.85;
+      }
+      .hr {
+        height: 1px;
+        background: #1f2a44;
+        margin: 12px 0;
+      }
+
+      .maptable {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 12px;
+      }
+      .maptable th,
+      .maptable td {
+        border-bottom: 1px solid #1f2a44;
+        padding: 8px;
+        font-size: 12px;
+        text-align: left;
+      }
+      .maptable th {
+        opacity: 0.9;
+        font-weight: 700;
+      }
+      .maptable tr:last-child td {
+        border-bottom: 0;
+      }
+      .pill {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #22304f;
+        display: inline-block;
+      }
+      .warn {
+        color: #ffcc66;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>SVG Recolor</h1>
+      <div class="sub">
+        Strict palette · nearest-color matching (Lab distance) · output
+        sizing/padding/background/rounded corners
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>1) Load SVG and preview</h2>
+        <div class="row">
+          <input id="file" type="file" accept=".svg,image/svg+xml" />
+          <button id="analyzeBtn" class="secondary" disabled>
+            Analyze colors
+          </button>
+          <button id="recolorBtn" disabled>Recolor + export options</button>
+          <button id="downloadBtn" class="secondary" disabled>
+            Download SVG
+          </button>
+        </div>
+        <div
+          class="small warn"
+          id="styleWarn"
+          style="margin-top: 10px; display: none"
+        >
+          Note: If your SVG uses external CSS/classes, this tool may not see
+          those colors. Inline attributes/styles/gradients are handled.
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="split">
+          <div class="preview">
+            <div class="label">Original</div>
+            <div id="origHost"></div>
+          </div>
+          <div class="preview">
+            <div class="label">Recolored + exported</div>
+            <div id="outHost"></div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <h2>Detected colors</h2>
+        <div id="detected" class="swatches"></div>
+
+        <div class="hr"></div>
+
+        <h2>Color mapping</h2>
+        <div class="small">
+          Every detected color is replaced with the nearest palette color.
+          Output uses only palette colors.
+        </div>
+        <div style="margin-top: 8px; overflow: auto">
+          <table class="maptable" id="mapTable">
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>To (palette)</th>
+                <th>Distance</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="card">
+        <h2>2) Palette (strict)</h2>
+        <div class="small">
+          Add colors to your palette. The recolored SVG will only use these
+          colors.
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <input id="palettePicker" type="color" value="#ff0000" />
+          <input
+            id="paletteHex"
+            class="mono"
+            type="text"
+            value="#ff0000"
+            style="
+              width: 120px;
+              padding: 10px;
+              border-radius: 10px;
+              border: 1px solid #1f2a44;
+              background: #0b0e14;
+              color: #e9eefc;
+            "
+          />
+          <button id="addPaletteBtn">Add</button>
+          <button id="clearPaletteBtn" class="danger">Clear</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content: space-between">
+          <div class="small">
+            <span class="pill">Palette</span> <span id="paletteCount">0</span>
+          </div>
+          <button id="useDetectedAsPaletteBtn" class="secondary" disabled>
+            Use detected colors as palette
+          </button>
+        </div>
+        <div
+          style="margin-top: 10px"
+          class="swatches"
+          id="paletteSwatches"
+        ></div>
+
+        <div class="hr"></div>
+
+        <h2>3) Export options</h2>
+        <div class="small">
+          These affect the output SVG (width/height attributes + viewBox +
+          background).
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <label class="small" for="outW">Width</label>
+          <input
+            id="outW"
+            class="mono"
+            type="number"
+            min="1"
+            value="512"
+            style="
+              width: 90px;
+              padding: 10px;
+              border-radius: 10px;
+              border: 1px solid #1f2a44;
+              background: #0b0e14;
+              color: #e9eefc;
+            "
+          />
+          <label class="small" for="outH">Height</label>
+          <input
+            id="outH"
+            class="mono"
+            type="number"
+            min="1"
+            value="512"
+            style="
+              width: 90px;
+              padding: 10px;
+              border-radius: 10px;
+              border: 1px solid #1f2a44;
+              background: #0b0e14;
+              color: #e9eefc;
+            "
+          />
+        </div>
+
+        <div class="row" style="margin-top: 10px">
+          <label class="small" for="padPx">Padding (px)</label>
+          <input
+            id="padPx"
+            class="mono"
+            type="number"
+            min="0"
+            value="0"
+            style="
+              width: 90px;
+              padding: 10px;
+              border-radius: 10px;
+              border: 1px solid #1f2a44;
+              background: #0b0e14;
+              color: #e9eefc;
+            "
+          />
+        </div>
+
+        <div class="row" style="margin-top: 10px">
+          <label class="small">Background</label>
+          <input id="bgEnabled" type="checkbox" checked />
+          <input id="bgPicker" type="color" value="#ffffff" />
+          <input
+            id="bgHex"
+            class="mono"
+            type="text"
+            value="#ffffff"
+            style="
+              width: 120px;
+              padding: 10px;
+              border-radius: 10px;
+              border: 1px solid #1f2a44;
+              background: #0b0e14;
+              color: #e9eefc;
+            "
+          />
+        </div>
+
+        <div class="row" style="margin-top: 10px">
+          <label class="small">Rounded corners</label>
+          <input id="roundEnabled" type="checkbox" />
+          <label class="small" for="radiusPx">Radius (px)</label>
+          <input
+            id="radiusPx"
+            class="mono"
+            type="number"
+            min="0"
+            value="24"
+            style="
+              width: 90px;
+              padding: 10px;
+              border-radius: 10px;
+              border: 1px solid #1f2a44;
+              background: #0b0e14;
+              color: #e9eefc;
+            "
+          />
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="small">
+          Tip: rounded corners are implemented as a background
+          <span class="mono">&lt;rect&gt;</span>. If background is off, rounded
+          corners won't visibly clip the artwork (SVG clipping is separate).
+        </div>
+      </aside>
+    </main>
+
+    <script>
+      (() => {
+        const $ = (id) => document.getElementById(id);
+
+        const fileInput = $("file");
+        const analyzeBtn = $("analyzeBtn");
+        const recolorBtn = $("recolorBtn");
+        const downloadBtn = $("downloadBtn");
+
+        const origHost = $("origHost");
+        const outHost = $("outHost");
+
+        const detectedWrap = $("detected");
+        const paletteSwatches = $("paletteSwatches");
+        const paletteCount = $("paletteCount");
+        const mapTableBody = $("mapTable").querySelector("tbody");
+        const styleWarn = $("styleWarn");
+
+        const palettePicker = $("palettePicker");
+        const paletteHex = $("paletteHex");
+        const addPaletteBtn = $("addPaletteBtn");
+        const clearPaletteBtn = $("clearPaletteBtn");
+        const useDetectedAsPaletteBtn = $("useDetectedAsPaletteBtn");
+
+        // Export options
+        const outW = $("outW");
+        const outH = $("outH");
+        const padPx = $("padPx");
+        const bgEnabled = $("bgEnabled");
+        const bgPicker = $("bgPicker");
+        const bgHex = $("bgHex");
+        const roundEnabled = $("roundEnabled");
+        const radiusPx = $("radiusPx");
+
+        let originalText = "";
+        let originalDoc = null;
+        let detectedColors = []; // normalized hex #rrggbb
+        let palette = []; // normalized hex #rrggbb
+        let recoloredText = "";
+
+        // ---------- Color parsing/normalization ----------
+        const SKIP = new Set([
+          "none",
+          "transparent",
+          "currentcolor",
+          "inherit",
+          "initial",
+          "unset",
+        ]);
+        const isUrlPaint = (v) => /^url\(#.+\)$/i.test(v.trim());
+
+        function toHex2(n) {
+          const s = n.toString(16);
+          return s.length === 1 ? "0" + s : s;
+        }
+
+        function normalizeColor(str) {
+          if (!str) return null;
+          let v = String(str).trim();
+          if (!v) return null;
+          const low = v.toLowerCase();
+          if (SKIP.has(low)) return null;
+          if (isUrlPaint(v)) return null;
+
+          if (/^#([0-9a-f]{3})$/i.test(v)) {
+            const m = v.slice(1);
+            const r = m[0] + m[0],
+              g = m[1] + m[1],
+              b = m[2] + m[2];
+            return "#" + r.toLowerCase() + g.toLowerCase() + b.toLowerCase();
+          }
+          if (/^#([0-9a-f]{6})$/i.test(v)) {
+            return "#" + v.slice(1).toLowerCase();
+          }
+
+          const rgb = v.match(
+            /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i
+          );
+          if (rgb) {
+            const r = Math.round(Number(rgb[1]));
+            const g = Math.round(Number(rgb[2]));
+            const b = Math.round(Number(rgb[3]));
+            if ([r, g, b].some((n) => Number.isNaN(n))) return null;
+            return (
+              "#" +
+              toHex2(Math.max(0, Math.min(255, r))) +
+              toHex2(Math.max(0, Math.min(255, g))) +
+              toHex2(Math.max(0, Math.min(255, b)))
+            );
+          }
+
+          const NAMED = {
+            black: "#000000",
+            white: "#ffffff",
+            red: "#ff0000",
+            green: "#008000",
+            blue: "#0000ff",
+            gray: "#808080",
+            grey: "#808080",
+            yellow: "#ffff00",
+            cyan: "#00ffff",
+            magenta: "#ff00ff",
+            orange: "#ffa500",
+            purple: "#800080",
+            pink: "#ffc0cb",
+            brown: "#a52a2a",
+          };
+          if (NAMED[low]) return NAMED[low];
+
+          return null;
+        }
+
+        function hexToRgb(hex) {
+          const h = hex.replace("#", "");
+          return {
+            r: parseInt(h.slice(0, 2), 16),
+            g: parseInt(h.slice(2, 4), 16),
+            b: parseInt(h.slice(4, 6), 16),
+          };
+        }
+
+        function srgbToLin(c) {
+          c = c / 255;
+          return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        }
+
+        function rgbToXyz({ r, g, b }) {
+          const R = srgbToLin(r),
+            G = srgbToLin(g),
+            B = srgbToLin(b);
+          const x = R * 0.4124564 + G * 0.3575761 + B * 0.1804375;
+          const y = R * 0.2126729 + G * 0.7151522 + B * 0.072175;
+          const z = R * 0.0193339 + G * 0.119192 + B * 0.9503041;
+          return { x, y, z };
+        }
+
+        function xyzToLab({ x, y, z }) {
+          const Xn = 0.95047,
+            Yn = 1.0,
+            Zn = 1.08883;
+          let fx = x / Xn,
+            fy = y / Yn,
+            fz = z / Zn;
+
+          const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+          fx = f(fx);
+          fy = f(fy);
+          fz = f(fz);
+
+          const L = 116 * fy - 16;
+          const a = 500 * (fx - fy);
+          const b = 200 * (fy - fz);
+          return { L, a, b };
+        }
+
+        function hexToLab(hex) {
+          return xyzToLab(rgbToXyz(hexToRgb(hex)));
+        }
+
+        function deltaE76(lab1, lab2) {
+          const dL = lab1.L - lab2.L;
+          const da = lab1.a - lab2.a;
+          const db = lab1.b - lab2.b;
+          return Math.sqrt(dL * dL + da * da + db * db);
+        }
+
+        function nearestPaletteColor(fromHex, paletteHexes) {
+          const fromLab = hexToLab(fromHex);
+          let best = null;
+          for (const p of paletteHexes) {
+            const d = deltaE76(fromLab, hexToLab(p));
+            if (!best || d < best.d) best = { color: p, d };
+          }
+          return best;
+        }
+
+        // ---------- SVG parsing + color extraction ----------
+        function parseSvgTextToDoc(svgText) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(svgText, "image/svg+xml");
+          const parseError = doc.querySelector("parsererror");
+          if (parseError) throw new Error("SVG parse error.");
+          return doc;
+        }
+
+        function collectColorsFromStyleAttr(styleValue) {
+          const found = [];
+          if (!styleValue) return found;
+          const decls = styleValue
+            .split(";")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          for (const d of decls) {
+            const m = d.match(/^([a-z-]+)\s*:\s*(.+)$/i);
+            if (!m) continue;
+            const prop = m[1].toLowerCase();
+            const val = m[2].trim();
+            if (prop === "fill" || prop === "stroke" || prop === "stop-color") {
+              const n = normalizeColor(val);
+              if (n) found.push({ prop, value: n });
+            }
+          }
+          return found;
+        }
+
+        function gatherDetectedColors(svgDoc) {
+          const colors = new Set();
+          styleWarn.style.display = svgDoc.querySelector("style")
+            ? "block"
+            : "none";
+          const all = svgDoc.querySelectorAll("*");
+          for (const el of all) {
+            for (const attr of ["fill", "stroke", "stop-color"]) {
+              const v = el.getAttribute(attr);
+              const n = normalizeColor(v);
+              if (n) colors.add(n);
+            }
+            const style = el.getAttribute("style");
+            for (const item of collectColorsFromStyleAttr(style))
+              colors.add(item.value);
+          }
+          return Array.from(colors).sort();
+        }
+
+        // ---------- Recoloring ----------
+        function setOrUpdateStyleProp(styleValue, prop, newColor) {
+          const decls = styleValue
+            ? styleValue
+                .split(";")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [];
+          let replaced = false;
+          const out = decls.map((d) => {
+            const m = d.match(/^([a-z-]+)\s*:\s*(.+)$/i);
+            if (!m) return d;
+            if (m[1].toLowerCase() === prop.toLowerCase()) {
+              replaced = true;
+              return `${prop}:${newColor}`;
+            }
+            return d;
+          });
+          if (!replaced) out.push(`${prop}:${newColor}`);
+          return out.join("; ");
+        }
+
+        function recolorSvgDoc(svgDoc, paletteHexes) {
+          if (!paletteHexes.length) throw new Error("Palette is empty.");
+
+          const fromColors = gatherDetectedColors(svgDoc);
+          const mapping = new Map();
+          const distances = new Map();
+          for (const c of fromColors) {
+            const best = nearestPaletteColor(c, paletteHexes);
+            mapping.set(c, best.color);
+            distances.set(c, best.d);
+          }
+
+          const all = svgDoc.querySelectorAll("*");
+          for (const el of all) {
+            for (const attr of ["fill", "stroke", "stop-color"]) {
+              const v = el.getAttribute(attr);
+              const n = normalizeColor(v);
+              if (n && mapping.has(n)) el.setAttribute(attr, mapping.get(n));
+            }
+
+            const style = el.getAttribute("style");
+            if (style) {
+              let next = style;
+              for (const prop of ["fill", "stroke", "stop-color"]) {
+                const items = collectColorsFromStyleAttr(next).filter(
+                  (x) => x.prop === prop
+                );
+                for (const it of items) {
+                  if (mapping.has(it.value)) {
+                    next = setOrUpdateStyleProp(
+                      next,
+                      prop,
+                      mapping.get(it.value)
+                    );
+                  }
+                }
+              }
+              el.setAttribute("style", next);
+            }
+          }
+
+          return { mapping, distances, fromColors };
+        }
+
+        function serializeSvg(svgDoc) {
+          return new XMLSerializer().serializeToString(svgDoc.documentElement);
+        }
+
+        // ---------- Export options (size/padding/bg/rounded) ----------
+        function applyExportOptions(svgDoc, opts) {
+          const svg = svgDoc.documentElement;
+
+          // Ensure there is a viewBox; if absent, try to infer from width/height, else fallback
+          let vb = svg.getAttribute("viewBox");
+          let minX = 0,
+            minY = 0,
+            vbW = 0,
+            vbH = 0;
+
+          if (vb) {
+            const parts = vb
+              .trim()
+              .split(/[\s,]+/)
+              .map(Number);
+            if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+              [minX, minY, vbW, vbH] = parts;
+            }
+          } else {
+            const wAttr = svg.getAttribute("width");
+            const hAttr = svg.getAttribute("height");
+            const w = wAttr ? parseFloat(wAttr) : NaN;
+            const h = hAttr ? parseFloat(hAttr) : NaN;
+            if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+              minX = 0;
+              minY = 0;
+              vbW = w;
+              vbH = h;
+              svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+            } else {
+              // last resort: arbitrary square
+              minX = 0;
+              minY = 0;
+              vbW = 100;
+              vbH = 100;
+              svg.setAttribute("viewBox", `0 0 100 100`);
+            }
+          }
+
+          const pad = Math.max(0, Number(opts.paddingPx) || 0);
+
+          // Wrap existing children in a <g> so we can translate for padding while keeping geometry intact
+          // Avoid double-wrapping if already wrapped by us
+          const existingWrapper = svg.querySelector(
+            ":scope > g[data-export-wrapper='1']"
+          );
+          let wrapper;
+          if (existingWrapper) {
+            wrapper = existingWrapper;
+          } else {
+            wrapper = svgDoc.createElementNS("http://www.w3.org/2000/svg", "g");
+            wrapper.setAttribute("data-export-wrapper", "1");
+
+            const children = Array.from(svg.childNodes);
+            for (const ch of children) {
+              // Skip XML whitespace nodes? keep them (safe), but background rect insertion uses firstElementChild anyway
+              wrapper.appendChild(ch);
+            }
+            svg.appendChild(wrapper);
+          }
+
+          // Translate content by padding
+          wrapper.setAttribute(
+            "transform",
+            `translate(${pad - minX}, ${pad - minY})`
+          );
+
+          // New viewBox includes padding around original box
+          const newW = vbW + pad * 2;
+          const newH = vbH + pad * 2;
+          svg.setAttribute("viewBox", `0 0 ${newW} ${newH}`);
+
+          // Set output size (attributes)
+          const outWidth = Math.max(1, Math.floor(Number(opts.outW) || 1));
+          const outHeight = Math.max(1, Math.floor(Number(opts.outH) || 1));
+          svg.setAttribute("width", String(outWidth));
+          svg.setAttribute("height", String(outHeight));
+          svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+          // Background rect (optional)
+          const bgOn = !!opts.bgEnabled;
+          const bgColor = opts.bgColor; // already normalized
+          const roundOn = !!opts.roundEnabled;
+          const rPx = Math.max(0, Number(opts.radiusPx) || 0);
+
+          // Remove any prior background we inserted
+          const priorBg = svg.querySelector(
+            ":scope > rect[data-export-bg='1']"
+          );
+          if (priorBg) priorBg.remove();
+
+          if (bgOn && bgColor) {
+            const rect = svgDoc.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "rect"
+            );
+            rect.setAttribute("data-export-bg", "1");
+            rect.setAttribute("x", "0");
+            rect.setAttribute("y", "0");
+            rect.setAttribute("width", String(newW));
+            rect.setAttribute("height", String(newH));
+            rect.setAttribute("fill", bgColor);
+            if (roundOn && rPx > 0) {
+              rect.setAttribute("rx", String(rPx));
+              rect.setAttribute("ry", String(rPx));
+            }
+
+            // Insert behind everything: before the wrapper group if possible, else at start
+            const firstEl = svg.firstElementChild;
+            if (firstEl) svg.insertBefore(rect, firstEl);
+            else svg.appendChild(rect);
+          }
+
+          // If rounded corners enabled but bg off, nothing visible (we note this in UI).
+          // If you want actual clipping of artwork, we can add clipPath too (ask and I’ll add it).
+        }
+
+        // ---------- UI rendering ----------
+        function renderSwatches(container, colors, removable, onRemove) {
+          container.innerHTML = "";
+          if (!colors.length) {
+            container.innerHTML = `<div class="small" style="opacity:.75;">No colors</div>`;
+            return;
+          }
+          for (const c of colors) {
+            const el = document.createElement("div");
+            el.className = "swatch";
+            el.innerHTML = `
+        <span class="chip" style="background:${c}"></span>
+        <span class="mono">${c}</span>
+        ${
+          removable
+            ? `<button class="secondary" style="padding:6px 8px; border-radius:10px;">Remove</button>`
+            : ``
+        }
+      `;
+            if (removable) {
+              el.querySelector("button").addEventListener("click", () =>
+                onRemove(c)
+              );
+            }
+            container.appendChild(el);
+          }
+        }
+
+        function renderMappingTable(mapping, distances) {
+          mapTableBody.innerHTML = "";
+          const keys = Array.from(mapping.keys()).sort();
+          if (!keys.length) {
+            mapTableBody.innerHTML = `<tr><td colspan="3" style="opacity:.75;">No mapping yet</td></tr>`;
+            return;
+          }
+          for (const from of keys) {
+            const to = mapping.get(from);
+            const d = distances.get(from);
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+        <td>
+          <span class="chip" style="background:${from}"></span>
+          <span class="mono">${from}</span>
+        </td>
+        <td>
+          <span class="chip" style="background:${to}"></span>
+          <span class="mono">${to}</span>
+        </td>
+        <td><span class="pill">${d.toFixed(2)}</span></td>
+      `;
+            mapTableBody.appendChild(tr);
+          }
+        }
+
+        function setPalette(next) {
+          palette = Array.from(
+            new Set(next.map(normalizeColor).filter(Boolean))
+          );
+          paletteCount.textContent = String(palette.length);
+          renderSwatches(paletteSwatches, palette, true, (c) => {
+            setPalette(palette.filter((x) => x !== c));
+          });
+          recolorBtn.disabled = !(originalDoc && palette.length);
+        }
+
+        function setDetected(next) {
+          detectedColors = next;
+          renderSwatches(detectedWrap, detectedColors, false);
+          useDetectedAsPaletteBtn.disabled = !detectedColors.length;
+        }
+
+        function loadOriginal(svgText) {
+          originalText = svgText;
+          originalDoc = parseSvgTextToDoc(svgText);
+
+          origHost.innerHTML = "";
+          const cloned = originalDoc.documentElement.cloneNode(true);
+          cloned.removeAttribute("width");
+          cloned.removeAttribute("height");
+          cloned.style.maxWidth = "100%";
+          cloned.style.height = "auto";
+          origHost.appendChild(cloned);
+
+          outHost.innerHTML = "";
+          recoloredText = "";
+          downloadBtn.disabled = true;
+
+          analyzeBtn.disabled = false;
+          recolorBtn.disabled = !palette.length;
+          setDetected([]);
+          renderMappingTable(new Map(), new Map());
+        }
+
+        function getExportOpts() {
+          const bg =
+            normalizeColor(bgHex.value) || normalizeColor(bgPicker.value);
+          return {
+            outW: outW.value,
+            outH: outH.value,
+            paddingPx: padPx.value,
+            bgEnabled: bgEnabled.checked,
+            bgColor: bgEnabled.checked ? bg : null,
+            roundEnabled: roundEnabled.checked,
+            radiusPx: radiusPx.value,
+          };
+        }
+
+        function syncBgInputs() {
+          const n = normalizeColor(bgHex.value);
+          if (n) bgPicker.value = n;
+        }
+
+        // ---------- Events ----------
+        fileInput.addEventListener("change", async () => {
+          const f = fileInput.files?.[0];
+          if (!f) return;
+          const text = await f.text();
+          loadOriginal(text);
+        });
+
+        analyzeBtn.addEventListener("click", () => {
+          if (!originalDoc) return;
+          setDetected(gatherDetectedColors(originalDoc));
+        });
+
+        palettePicker.addEventListener("input", () => {
+          paletteHex.value = palettePicker.value;
+        });
+
+        paletteHex.addEventListener("input", () => {
+          const n = normalizeColor(paletteHex.value);
+          if (n) palettePicker.value = n;
+        });
+
+        addPaletteBtn.addEventListener("click", () => {
+          const n = normalizeColor(paletteHex.value);
+          if (!n)
+            return alert("Enter a valid color like #RRGGBB or rgb(r,g,b).");
+          setPalette([...palette, n]);
+        });
+
+        clearPaletteBtn.addEventListener("click", () => setPalette([]));
+
+        useDetectedAsPaletteBtn.addEventListener("click", () => {
+          if (!detectedColors.length) return;
+          setPalette(detectedColors);
+        });
+
+        bgPicker.addEventListener("input", () => {
+          bgHex.value = bgPicker.value;
+        });
+        bgHex.addEventListener("input", syncBgInputs);
+
+        recolorBtn.addEventListener("click", () => {
+          if (!originalDoc) return;
+          if (!palette.length)
+            return alert("Palette is empty. Add at least one color.");
+
+          // fresh copy each time
+          const docCopy = parseSvgTextToDoc(originalText);
+
+          const { mapping, distances, fromColors } = recolorSvgDoc(
+            docCopy,
+            palette
+          );
+
+          // Apply export options AFTER recoloring (so bg isn't recolored)
+          applyExportOptions(docCopy, getExportOpts());
+
+          recoloredText = serializeSvg(docCopy);
+
+          // preview
+          outHost.innerHTML = "";
+          const outEl = docCopy.documentElement.cloneNode(true);
+          outEl.removeAttribute("width");
+          outEl.removeAttribute("height");
+          outEl.style.maxWidth = "100%";
+          outEl.style.height = "auto";
+          outHost.appendChild(outEl);
+
+          setDetected(fromColors);
+          renderMappingTable(mapping, distances);
+
+          downloadBtn.disabled = false;
+        });
+
+        downloadBtn.addEventListener("click", () => {
+          if (!recoloredText) return;
+          const blob = new Blob([recoloredText], {
+            type: "image/svg+xml;charset=utf-8",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "recolored.svg";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        });
+
+        // seed palette + export defaults
+        setPalette([
+          "#ffffff",
+          "#5553FF",
+          "#EF2E98",
+          "#4ADE80",
+          "#10265D",
+          "#FFDE00",
+          "#0C1322",
+        ]);
+        syncBgInputs();
+      })();
+    </script>
+  </body>
+</html>

@@ -220,7 +220,7 @@ npm run dev
 npm start
 
 # Test the API
-node send-robot.js
+node send-svg.js
 ```
 
 #### Environment Variables
@@ -243,7 +243,7 @@ recolor-svg/
 ├── package.json         # Dependencies and scripts
 ├── README.md            # This file
 ├── API.md               # Complete API documentation
-├── send-robot.js        # Example API usage script
+├── send-svg.js          # Example API usage script
 ├── test-api.js          # Automated API tests
 ├── test-recolor.js      # Unit tests for recolor module
 └── testing/             # Test files
@@ -271,9 +271,14 @@ Test with a real SVG (Robot example):
 ```bash
 # Start the server first
 npm start
+```
 
-# Then send the robot SVG
-node send-robot.js
+Test with any SVG file:
+```bash
+# Place your SVG file in the testing/ directory as 'test_input.svg'
+# Then run:
+node send-svg.js
+# The recolored SVG will be saved to testing/output.svg
 ```
 
 ## Contributing
@@ -306,4 +311,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - API powered by Fastify for high performance
 - Uses LAB color space for advanced perceptually accurate color matching
 - Inspired by the need for better SVG manipulation tools
-- An original idea by Zuwayr and Usama
+
+> An original idea by Zuwayr and Usama

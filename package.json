@@ -1,0 +1,16 @@
+{
+  "name": "recolor-svg-api",
+  "version": "1.0.0",
+  "description": "API for recoloring SVG images using v1 and v2 algorithms",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "fastify": "^5.2.0",
+    "xmldom": "^0.6.0"
+  }
+}

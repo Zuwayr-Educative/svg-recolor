@@ -9,7 +9,7 @@ An interactive web application and REST API for recoloring SVG images with intel
 ## Quick Start
 
 ### Web App (No Installation)
-Visit [https://zuwayr-educative.github.io/svg-recolor/](https://zuwayr-educative.github.io/svg-recolor/) or open `index.html` locally.
+Visit [https://zuwayr-educative.github.io/svg-recolor/](https://zuwayr-educative.github.io/svg-recolor/) or serve the directory locally (e.g., `python3 -m http.server` or `npx serve`).
 
 ### API (3 Commands)
 ```bash
@@ -44,7 +44,7 @@ npm start
 
 #### Prerequisites
 - Modern web browser (Chrome, Firefox, Safari, Edge)
-- No server required - works completely client-side
+- Local web server (required for ES modules, e.g., Python HTTP server or VS Code Live Server)
 
 #### Installation
 1. Clone the repository:
@@ -53,7 +53,16 @@ npm start
    cd svg-recolor-tool
    ```
 
-2. Open `index.html` in your web browser
+2. Start a local server:
+   ```bash
+   # Python 3
+   python3 -m http.server 8000
+   
+   # OR using Node.js
+   npx serve .
+   ```
+
+3. Open `http://localhost:8000` in your web browser
 
 ### API Server
 

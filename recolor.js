@@ -1,53 +1,55 @@
 import { DOMParser, XMLSerializer } from 'xmldom';
+import { simplifySvg } from './simplifySvg.js';
+import {
+    normalizeColor,
+    findNearestColorV1,
+    findNearestColorV2,
+    setOrUpdateStyleProp
+} from './color-utils.js';
 
 /**
- * Normalize color to hex format
+ * Process viewbox fill and class removal from SVG document
+ * @param {Document} svgDoc - The SVG document to process
+ * @param {boolean} removeFill - Whether to remove the fill and classes
+ * @returns {Document} - The processed SVG document
  */
-function normalizeColor(color) {
-    if (!color || typeof color !== 'string') return null;
+export function processViewBoxFill(svgDoc, removeFill = true) {
+    if (!removeFill) return svgDoc;
 
-    const trimmedColor = color.trim();
-    if (!trimmedColor || trimmedColor === 'none' || trimmedColor === 'transparent') return null;
+    const svg = svgDoc.documentElement;
+    if (!svg || svg.tagName.toLowerCase() !== 'svg') return svgDoc;
 
-    // If already hex, validate and return
-    if (trimmedColor.startsWith('#')) {
-        if (trimmedColor.length === 7) {
-            return trimmedColor.toLowerCase();
+    // Remove fill attribute if it exists and isn't 'none'
+    if (svg.hasAttribute('fill') && svg.getAttribute('fill') !== 'none') {
+        svg.removeAttribute('fill');
+    }
+
+    // Remove class attribute if it exists
+    if (svg.hasAttribute('class')) {
+        svg.removeAttribute('class');
+    }
+
+    // Process style attribute if it exists
+    if (svg.hasAttribute('style')) {
+        let style = svg.getAttribute('style');
+
+        // Remove fill, fill-rule, and class-related properties from style
+        style = style
+            .replace(/fill:\s*[^;]+;?/g, '')
+            .replace(/fill-rule:\s*[^;]+;?/g, '')
+            .replace(/\.?[a-z0-9_-]+\s*{[^}]*}/g, '')  // Remove any class-like definitions
+            .replace(/;+/g, ';')
+            .replace(/^;|;$/g, '')
+            .trim();
+
+        if (style) {
+            svg.setAttribute('style', style);
+        } else {
+            svg.removeAttribute('style');
         }
-        // Handle shorthand hex
-        if (trimmedColor.length === 4) {
-            const r = trimmedColor[1];
-            const g = trimmedColor[2];
-            const b = trimmedColor[3];
-            return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
-        }
     }
 
-    // Handle named colors
-    const namedColors = {
-        'black': '#000000', 'white': '#ffffff', 'red': '#ff0000',
-        'green': '#008000', 'blue': '#0000ff', 'yellow': '#ffff00',
-        'cyan': '#00ffff', 'magenta': '#ff00ff', 'gray': '#808080',
-        'grey': '#808080', 'silver': '#c0c0c0', 'maroon': '#800000',
-        'olive': '#808000', 'lime': '#00ff00', 'aqua': '#00ffff',
-        'teal': '#008080', 'navy': '#000080', 'fuchsia': '#ff00ff',
-        'purple': '#800080', 'orange': '#ffa500'
-    };
-
-    if (namedColors[trimmedColor.toLowerCase()]) {
-        return namedColors[trimmedColor.toLowerCase()];
-    }
-
-    // Handle rgb/rgba format
-    const rgbMatch = trimmedColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (rgbMatch) {
-        const r = parseInt(rgbMatch[1]);
-        const g = parseInt(rgbMatch[2]);
-        const b = parseInt(rgbMatch[3]);
-        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-    }
-
-    return trimmedColor.toLowerCase();
+    return svgDoc;
 }
 
 /**
@@ -94,160 +96,43 @@ function gatherColors(svgDoc) {
     return Array.from(colors).sort();
 }
 
-/**
- * Convert hex to RGB
- */
-function hexToRgb(hex) {
-    if (!hex || typeof hex !== 'string' || !hex.startsWith('#') || hex.length !== 7) {
-        return null;
-    }
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
-    return { r, g, b };
-}
 
-/**
- * V1: Find nearest color using simple RGB Euclidean distance
- */
-function findNearestColorV1(targetColor, palette) {
-    if (palette.length === 0) return targetColor;
 
-    const target = hexToRgb(targetColor);
-    if (!target) return targetColor;
-
-    let nearest = palette[0];
-    let minDistance = Infinity;
-
-    palette.forEach(paletteColor => {
-        const paletteRgb = hexToRgb(paletteColor);
-        if (!paletteRgb) return;
-
-        const distance = Math.sqrt(
-            Math.pow(target.r - paletteRgb.r, 2) +
-            Math.pow(target.g - paletteRgb.g, 2) +
-            Math.pow(target.b - paletteRgb.b, 2)
-        );
-
-        if (distance < minDistance) {
-            minDistance = distance;
-            nearest = paletteColor;
-        }
-    });
-
-    return nearest;
-}
-
-/**
- * V2: Advanced LAB color space functions
- */
-function rgbToXyz(r, g, b) {
-    r = r / 255;
-    g = g / 255;
-    b = b / 255;
-
-    r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-    g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-    b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
-
-    r *= 100;
-    g *= 100;
-    b *= 100;
-
-    const x = r * 0.4124 + g * 0.3576 + b * 0.1805;
-    const y = r * 0.2126 + g * 0.7152 + b * 0.0722;
-    const z = r * 0.0193 + g * 0.1192 + b * 0.9505;
-
-    return { x, y, z };
-}
-
-function xyzToLab(x, y, z) {
-    const xn = 95.047;
-    const yn = 100.000;
-    const zn = 108.883;
-
-    x = x / xn;
-    y = y / yn;
-    z = z / zn;
-
-    x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x + 16/116);
-    y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y + 16/116);
-    z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z + 16/116);
-
-    const l = (116 * y) - 16;
-    const a = 500 * (x - y);
-    const b = 200 * (y - z);
-
-    return { l, a, b };
-}
-
-function hexToLab(hex) {
-    const rgb = hexToRgb(hex);
-    if (!rgb) return null;
-    const xyz = rgbToXyz(rgb.r, rgb.g, rgb.b);
-    return xyzToLab(xyz.x, xyz.y, xyz.z);
-}
-
-function deltaE76(lab1, lab2) {
-    if (!lab1 || !lab2) return Infinity;
-    const deltaL = lab1.l - lab2.l;
-    const deltaA = lab1.a - lab2.a;
-    const deltaB = lab1.b - lab2.b;
-    return Math.sqrt(deltaL * deltaL + deltaA * deltaA + deltaB * deltaB);
-}
-
-/**
- * V2: Find nearest color using LAB color space (perceptually accurate)
- */
-function findNearestColorV2(targetColor, palette) {
-    const fromLab = hexToLab(targetColor);
-    if (!fromLab) return { color: targetColor, distance: 0 };
-
-    let best = null;
-    for (const paletteColor of palette) {
-        const pLab = hexToLab(paletteColor);
-        if (!pLab) continue;
-        const d = deltaE76(fromLab, pLab);
-        if (!best || d < best.distance) {
-            best = { color: paletteColor, distance: d };
-        }
-    }
-
-    return best || { color: targetColor, distance: 0 };
-}
-
-/**
- * Update style property in style string
- */
-function setOrUpdateStyleProp(styleValue, prop, newColor) {
-    const decls = styleValue
-        ? styleValue.split(';').map(s => s.trim()).filter(Boolean)
-        : [];
-    let replaced = false;
-    const out = decls.map(d => {
-        const m = d.match(/^([a-z-]+)\s*:\s*(.+)$/i);
-        if (!m) return d;
-        if (m[1].toLowerCase() === prop.toLowerCase()) {
-            replaced = true;
-            return `${prop}:${newColor}`;
-        }
-        return d;
-    });
-    if (!replaced) out.push(`${prop}:${newColor}`);
-    return out.join('; ');
-}
 
 /**
  * Recolor SVG using V1 algorithm (simple RGB distance)
+ * @param {string} svgString - The SVG content as a string
+ * @param {string[]} palette - Array of hex color codes
+ * @param {Object} [options] - Additional options
+ * @param {boolean} [options.removeViewBoxFill=true] - Whether to remove fill from the root SVG element
+ * @returns {Object} - Object containing the recolored SVG and metadata
  */
-export function recolorV1(svgString, palette) {
+export function recolorV1(svgString, palette, {
+    removeViewBoxFill = true,
+    simplify = false,
+    simplifyOptions = {}
+} = {}) {
     if (!palette || palette.length === 0) {
         throw new Error('Palette is empty');
     }
 
+    // Simplify SVG if enabled
+    const processedSvgString = simplify
+        ? simplifySvg(svgString, {
+            replaceGradients: true,
+            defaultColor: '#000000',
+            keepViewBox: true,
+            ...simplifyOptions
+        })
+        : svgString;
+
     const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+    const svgDoc = parser.parseFromString(processedSvgString, 'image/svg+xml');
+
+    // Process viewbox fill if needed
+    if (removeViewBoxFill) {
+        processViewBoxFill(svgDoc, true);
+    }
 
     // Gather all colors from the SVG
     const detectedColors = gatherColors(svgDoc);
@@ -314,14 +199,38 @@ export function recolorV1(svgString, palette) {
 
 /**
  * Recolor SVG using V2 algorithm (LAB color space)
+ * @param {string} svgString - The SVG content as a string
+ * @param {string[]} palette - Array of hex color codes
+ * @param {Object} [options] - Additional options
+ * @param {boolean} [options.removeViewBoxFill=true] - Whether to remove fill from the root SVG element
+ * @returns {Object} - Object containing the recolored SVG and metadata
  */
-export function recolorV2(svgString, palette) {
+export function recolorV2(svgString, palette, {
+    removeViewBoxFill = true,
+    simplify = false,
+    simplifyOptions = {}
+} = {}) {
     if (!palette || palette.length === 0) {
         throw new Error('Palette is empty');
     }
 
+    // Simplify SVG if enabled
+    const processedSvgString = simplify
+        ? simplifySvg(svgString, {
+            replaceGradients: true,
+            defaultColor: '#000000',
+            keepViewBox: true,
+            ...simplifyOptions
+        })
+        : svgString;
+
     const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+    const svgDoc = parser.parseFromString(processedSvgString, 'image/svg+xml');
+
+    // Process viewbox fill if needed
+    if (removeViewBoxFill) {
+        processViewBoxFill(svgDoc, true);
+    }
 
     // Gather all colors from the SVG
     const detectedColors = gatherColors(svgDoc);

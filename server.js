@@ -43,8 +43,8 @@ fastify.post('/api/recolor/v1', async (request, reply) => {
             });
         }
 
-        // Perform recoloring
-        const result = recolorV1(svg, palette);
+        // Perform recoloring with simplification enabled by default
+        const result = recolorV1(svg, palette, { simplify: true });
 
         // Return raw SVG
         return reply
@@ -92,8 +92,8 @@ fastify.post('/api/recolor/v2', async (request, reply) => {
             });
         }
 
-        // Perform recoloring
-        const result = recolorV2(svg, palette);
+        // Perform recoloring with simplification enabled by default
+        const result = recolorV2(svg, palette, { simplify: true });
 
         // Return raw SVG
         return reply

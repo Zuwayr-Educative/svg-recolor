@@ -1,3 +1,10 @@
+import {
+    normalizeColor,
+    findNearestColorV1,
+    findNearestColorV2,
+    setOrUpdateStyleProp
+} from './color-utils.js';
+
 /**
  * Interactive SVG Recoloring App
  * Main application class for handling SVG upload, manipulation, and recoloring
@@ -11,7 +18,7 @@ class InteractiveSVGRecolorApp {
         this.selectedElement = null;
         this.elementColors = new Map(); // Track original colors of elements
         this.currentColors = new Set(); // Track all detected colors
-        
+
         this.initializeElements();
         this.bindEvents();
         this.loadDefaultPalette();
@@ -31,13 +38,14 @@ class InteractiveSVGRecolorApp {
         this.autoRecolorBtn = document.getElementById('auto-recolor-btn');
         this.autoRecolorV2Btn = document.getElementById('auto-recolor-v2-btn');
         this.restoreOriginalBtn = document.getElementById('restore-original');
-        
+
         this.outputWidth = document.getElementById('output-width');
         this.outputHeight = document.getElementById('output-height');
         this.padding = document.getElementById('padding');
         this.borderRadius = document.getElementById('border-radius');
         this.backgroundColor = document.getElementById('background-color');
         this.maintainAspect = document.getElementById('maintain-aspect');
+        this.removeViewboxFill = document.getElementById('remove-viewbox-fill');
     }
 
     bindEvents() {
@@ -46,17 +54,18 @@ class InteractiveSVGRecolorApp {
         this.dropArea.addEventListener('dragover', (e) => this.handleDragOver(e));
         this.dropArea.addEventListener('drop', (e) => this.handleDrop(e));
         this.dropArea.addEventListener('dragleave', (e) => this.handleDragLeave(e));
-        
+
         this.addColorBtn.addEventListener('click', () => this.addColorToPalette());
         this.downloadBtn.addEventListener('click', () => this.downloadSVG());
         this.resetBtn.addEventListener('click', () => this.reset());
         this.autoRecolorBtn.addEventListener('click', () => this.autoRecolorToPalette());
         this.autoRecolorV2Btn.addEventListener('click', () => this.autoRecolorV2ToPalette());
         this.restoreOriginalBtn.addEventListener('click', () => this.restoreOriginal());
-        
+        this.removeViewboxFill.addEventListener('change', () => this.displayInteractiveSVG());
+
         // Add click-outside detection to clear selection
         document.addEventListener('click', (e) => this.handleDocumentClick(e));
-        
+
         this.outputWidth.addEventListener('input', () => this.updateOutput());
         this.outputHeight.addEventListener('input', () => this.updateOutput());
         this.padding.addEventListener('input', () => this.updateOutput());
@@ -115,7 +124,7 @@ class InteractiveSVGRecolorApp {
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = decoded;
                         const svgElement = tempDiv.querySelector('svg');
-                        
+
                         if (svgElement) {
                             // Copy attributes from image to the new SVG
                             for (let i = 0; i < img.attributes.length; i++) {
@@ -124,7 +133,7 @@ class InteractiveSVGRecolorApp {
                                     svgElement.setAttribute(attr.name, attr.value);
                                 }
                             }
-                            
+
                             // Replace the image with the decoded SVG
                             img.parentNode.replaceChild(svgElement, img);
                             modified = true;
@@ -145,7 +154,7 @@ class InteractiveSVGRecolorApp {
             // Remove the data URL prefix
             const base64String = base64Data.split('base64,')[1];
             if (!base64String) return null;
-            
+
             // Decode the base64 string
             const decodedString = atob(base64String);
             return decodedString;
@@ -157,16 +166,16 @@ class InteractiveSVGRecolorApp {
 
     processFile(file) {
         const reader = new FileReader();
-        
+
         reader.onload = (e) => {
             try {
                 let fileContent = e.target.result;
-                
+
                 // First, try to read as text
                 if (typeof fileContent === 'string') {
                     // Process any nested base64 SVGs in image elements
                     fileContent = this.extractNestedBase64SVG(fileContent);
-                    
+
                     // Check if it's a base64 data URL
                     if (this.isBase64SVG(fileContent)) {
                         const decodedSVG = this.decodeBase64SVG(fileContent);
@@ -177,7 +186,7 @@ class InteractiveSVGRecolorApp {
                             return;
                         }
                     }
-                    
+
                     // If it's not base64 but contains SVG, use it directly
                     if (fileContent.includes('<svg')) {
                         this.originalSVG = fileContent;
@@ -186,7 +195,7 @@ class InteractiveSVGRecolorApp {
                         return;
                     }
                 }
-                
+
                 // If we get here, try reading as binary
                 const binaryReader = new FileReader();
                 binaryReader.onload = (binaryEvent) => {
@@ -194,7 +203,7 @@ class InteractiveSVGRecolorApp {
                         const binaryData = binaryEvent.target.result;
                         const decoder = new TextDecoder('utf-8');
                         const text = decoder.decode(new Uint8Array(binaryData));
-                        
+
                         if (text.includes('<svg')) {
                             this.originalSVG = text;
                             this.currentSVG = text;
@@ -207,37 +216,67 @@ class InteractiveSVGRecolorApp {
                         alert('Error: Could not process the file. Please make sure it is a valid SVG file.');
                     }
                 };
-                
+
                 binaryReader.onerror = (error) => {
                     console.error('Error reading binary data:', error);
                     alert('Error reading file. Please try again.');
                 };
-                
+
                 binaryReader.readAsArrayBuffer(file);
-                
+
             } catch (error) {
                 console.error('Error processing file:', error);
                 alert('Error processing file. Please try again.');
             }
         };
-        
+
         reader.onerror = (error) => {
             console.error('Error reading file:', error);
             alert('Error reading file. Please try again.');
         };
-        
+
         // First try reading as text
         reader.readAsText(file);
     }
 
     displayInteractiveSVG() {
-        this.originalPreview.innerHTML = this.currentSVG;
-        const svg = this.originalPreview.querySelector('svg');
-        
-        if (svg) {
-            svg.style.maxWidth = '100%';
-            svg.style.maxHeight = '100%';
-            this.makeElementsClickable(svg);
+        let svgContent = this.currentSVG;
+
+        // Remove viewbox fill if the option is enabled
+        if (this.removeViewboxFill.checked) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+            const svg = doc.querySelector('svg');
+
+            if (svg) {
+                // Remove fill from the root SVG element
+                if (svg.hasAttribute('fill') && svg.getAttribute('fill') !== 'none') {
+                    svg.removeAttribute('fill');
+                }
+
+                // Also remove any style that might contain fill
+                if (svg.hasAttribute('style')) {
+                    let style = svg.getAttribute('style');
+                    style = style.replace(/fill:[^;]*;?/g, '');
+                    if (style.trim() === '') {
+                        svg.removeAttribute('style');
+                    } else {
+                        svg.setAttribute('style', style);
+                    }
+                }
+
+                // Update the SVG content
+                svgContent = new XMLSerializer().serializeToString(doc.documentElement);
+            }
+        }
+
+        this.originalPreview.innerHTML = svgContent;
+        const svgElement = this.originalPreview.querySelector('svg');
+
+        if (svgElement) {
+            svgElement.style.maxWidth = '100%';
+            svgElement.style.maxHeight = '100%';
+            this.makeElementsClickable(svgElement);
             this.extractColors();
             this.updateOutput();
         }
@@ -246,24 +285,24 @@ class InteractiveSVGRecolorApp {
     makeElementsClickable(svg) {
         // Find all elements that have fill or stroke
         const elements = svg.querySelectorAll('*');
-        
+
         elements.forEach((element, index) => {
             const fill = element.getAttribute('fill');
             const stroke = element.getAttribute('stroke');
             const style = element.getAttribute('style');
-            
+
             let hasColor = false;
             if (fill && fill !== 'none' && fill !== 'transparent') hasColor = true;
             if (stroke && stroke !== 'none' && stroke !== 'transparent') hasColor = true;
             if (style && (style.includes('fill:') || style.includes('stroke:'))) hasColor = true;
-            
+
             if (hasColor) {
                 element.classList.add('clickable-element');
                 element.dataset.elementId = index;
-                
+
                 // Store original color
                 this.elementColors.set(index, this.getElementColor(element));
-                
+
                 element.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -277,7 +316,7 @@ class InteractiveSVGRecolorApp {
         const fill = element.getAttribute('fill');
         const stroke = element.getAttribute('stroke');
         const style = element.getAttribute('style');
-        
+
         // Priority: fill > stroke > style
         if (fill && fill !== 'none' && fill !== 'transparent') {
             return { type: 'fill', color: fill };
@@ -300,12 +339,12 @@ class InteractiveSVGRecolorApp {
 
     selectElement(element, elementId) {
         this.clearSelection();
-        
+
         // Select new element
         this.selectedElement = { element, elementId };
         element.classList.add('selected-element');
         element.style.outline = '3px solid #667eea';
-        
+
         const colorInfo = this.elementColors.get(elementId);
         this.colorStatus.innerHTML = `
             <span class="current-selection">Selected:</span> 
@@ -338,14 +377,14 @@ class InteractiveSVGRecolorApp {
         document.querySelectorAll('.palette-color').forEach(el => {
             el.classList.remove('selected');
         });
-        
+
         // Select new color
         this.selectedColor = color;
         const colorElement = document.querySelector(`[data-color="${color}"]`);
         if (colorElement) {
             colorElement.classList.add('selected');
         }
-        
+
         // Apply color if element is selected
         if (this.selectedElement) {
             this.applyColorToSelectedElement(color);
@@ -354,10 +393,10 @@ class InteractiveSVGRecolorApp {
 
     applyColorToSelectedElement(color) {
         if (!this.selectedElement) return;
-        
+
         const { element, elementId } = this.selectedElement;
         const colorInfo = this.elementColors.get(elementId);
-        
+
         // Apply color based on original type
         if (colorInfo.type === 'fill') {
             element.setAttribute('fill', color);
@@ -372,11 +411,11 @@ class InteractiveSVGRecolorApp {
             style = style.replace(/stroke:\s*[^;]+/, `stroke: ${color}`);
             element.setAttribute('style', style);
         }
-        
+
         // Update current SVG
         this.currentSVG = this.originalPreview.innerHTML;
         this.updateOutput();
-        
+
         // Update status
         this.colorStatus.innerHTML = `
             <span class="current-selection">Applied:</span> 
@@ -401,7 +440,7 @@ class InteractiveSVGRecolorApp {
             colorDiv.style.backgroundColor = color;
             colorDiv.title = color;
             colorDiv.dataset.color = color;
-            
+
             const removeBtn = document.createElement('button');
             removeBtn.className = 'remove-btn';
             removeBtn.textContent = '×';
@@ -410,7 +449,7 @@ class InteractiveSVGRecolorApp {
                 this.palette.splice(index, 1);
                 this.updatePaletteDisplay();
             };
-            
+
             colorDiv.appendChild(removeBtn);
             colorDiv.addEventListener('click', () => this.selectPaletteColor(color));
             this.paletteContainer.appendChild(colorDiv);
@@ -426,160 +465,109 @@ class InteractiveSVGRecolorApp {
         this.currentColors.clear();
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
-        
+
         const elements = svgDoc.querySelectorAll('*');
         elements.forEach(el => {
             const fill = el.getAttribute('fill');
             const stroke = el.getAttribute('stroke');
-            
+
             if (fill && fill !== 'none' && fill !== 'transparent') {
-                this.currentColors.add(this.normalizeColor(fill));
+                this.currentColors.add(normalizeColor(fill));
             }
             if (stroke && stroke !== 'none' && stroke !== 'transparent') {
-                this.currentColors.add(this.normalizeColor(stroke));
+                this.currentColors.add(normalizeColor(stroke));
             }
-            
+
             const style = el.getAttribute('style');
             if (style) {
                 const fillMatch = style.match(/fill:\s*([^;]+)/);
                 const strokeMatch = style.match(/stroke:\s*([^;]+)/);
-                
+
                 if (fillMatch && fillMatch[1] !== 'none' && fillMatch[1] !== 'transparent') {
-                    this.currentColors.add(this.normalizeColor(fillMatch[1]));
+                    this.currentColors.add(normalizeColor(fillMatch[1]));
                 }
                 if (strokeMatch && strokeMatch[1] !== 'none' && strokeMatch[1] !== 'transparent') {
-                    this.currentColors.add(this.normalizeColor(strokeMatch[1]));
+                    this.currentColors.add(normalizeColor(strokeMatch[1]));
                 }
             }
         });
     }
 
-    normalizeColor(color) {
-        if (!color || typeof color !== 'string') return null;
-        
-        const trimmedColor = color.trim();
-        if (!trimmedColor || trimmedColor === 'none' || trimmedColor === 'transparent') return null;
-        
-        const div = document.createElement('div');
-        div.style.color = trimmedColor;
-        document.body.appendChild(div);
-        const computedColor = window.getComputedStyle(div).color;
-        document.body.removeChild(div);
-        
-        const match = computedColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (match) {
-            const r = parseInt(match[1]);
-            const g = parseInt(match[2]);
-            const b = parseInt(match[3]);
-            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-        }
-        return trimmedColor;
-    }
 
-    findNearestColor(targetColor) {
-        if (this.palette.length === 0) return targetColor;
-        
-        const target = this.hexToRgb(targetColor);
-        let nearest = this.palette[0];
-        let minDistance = Infinity;
-        
-        this.palette.forEach(paletteColor => {
-            const palette = this.hexToRgb(paletteColor);
-            const distance = Math.sqrt(
-                Math.pow(target.r - palette.r, 2) +
-                Math.pow(target.g - palette.g, 2) +
-                Math.pow(target.b - palette.b, 2)
-            );
-            
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearest = paletteColor;
-            }
-        });
-        
-        return nearest;
-    }
-
-    hexToRgb(hex) {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return { r, g, b };
-    }
 
     autoRecolorToPalette() {
         if (!this.originalSVG || this.palette.length === 0) {
             alert('Please upload an SVG and set up your color palette first.');
             return;
         }
-        
+
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(this.originalSVG, 'image/svg+xml');
         const elements = svgDoc.querySelectorAll('*');
-        
+
         // Create color mapping
         const colorMap = new Map();
         Array.from(this.currentColors).forEach(originalColor => {
-            const nearestColor = this.findNearestColor(originalColor);
+            const nearestColor = findNearestColorV1(originalColor, this.palette);
             colorMap.set(originalColor.toLowerCase(), nearestColor);
         });
-        
+
         // Update elements
         elements.forEach(el => {
             // Handle fill attribute
             const fill = el.getAttribute('fill');
             if (fill && fill !== 'none' && fill !== 'transparent') {
-                const normalizedFill = this.normalizeColor(fill);
+                const normalizedFill = normalizeColor(fill);
                 const newColor = colorMap.get(normalizedFill.toLowerCase());
                 if (newColor) {
                     el.setAttribute('fill', newColor);
                 }
             }
-            
+
             // Handle stroke attribute
             const stroke = el.getAttribute('stroke');
             if (stroke && stroke !== 'none' && stroke !== 'transparent') {
-                const normalizedStroke = this.normalizeColor(stroke);
+                const normalizedStroke = normalizeColor(stroke);
                 const newColor = colorMap.get(normalizedStroke.toLowerCase());
                 if (newColor) {
                     el.setAttribute('stroke', newColor);
                 }
             }
-            
+
             // Handle style attribute
             const style = el.getAttribute('style');
             if (style) {
                 let newStyle = style;
-                
+
                 // Replace fill in style
                 const fillMatch = style.match(/fill:\s*([^;]+)/);
                 if (fillMatch && fillMatch[1] !== 'none' && fillMatch[1] !== 'transparent') {
-                    const normalizedFill = this.normalizeColor(fillMatch[1].trim());
+                    const normalizedFill = normalizeColor(fillMatch[1].trim());
                     const newColor = colorMap.get(normalizedFill.toLowerCase());
                     if (newColor) {
                         newStyle = newStyle.replace(/fill:\s*[^;]+/, `fill: ${newColor}`);
                     }
                 }
-                
+
                 // Replace stroke in style
                 const strokeMatch = style.match(/stroke:\s*([^;]+)/);
                 if (strokeMatch && strokeMatch[1] !== 'none' && strokeMatch[1] !== 'transparent') {
-                    const normalizedStroke = this.normalizeColor(strokeMatch[1].trim());
+                    const normalizedStroke = normalizeColor(strokeMatch[1].trim());
                     const newColor = colorMap.get(normalizedStroke.toLowerCase());
                     if (newColor) {
                         newStyle = newStyle.replace(/stroke:\s*[^;]+/, `stroke: ${newColor}`);
                     }
                 }
-                
+
                 if (newStyle !== style) {
                     el.setAttribute('style', newStyle);
                 }
             }
         });
-        
+
         this.currentSVG = new XMLSerializer().serializeToString(svgDoc);
         this.displayInteractiveSVG();
-        
+
         this.colorStatus.innerHTML = `
             <span class="current-selection">Auto Recolored:</span> 
             Applied ${colorMap.size} color mappings to palette
@@ -591,105 +579,25 @@ class InteractiveSVGRecolorApp {
             alert('No original SVG to restore.');
             return;
         }
-        
+
         this.currentSVG = this.originalSVG;
         this.displayInteractiveSVG();
-        
+
         this.colorStatus.innerHTML = 'Original colors restored - click on an element to start recoloring';
     }
 
-    // Advanced color functions for V2 recoloring
-    hexToRgbV2(hex) {
-        if (!hex || typeof hex !== 'string' || !hex.startsWith('#') || hex.length !== 7) return null;
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
-        return { r, g, b };
-    }
 
-    rgbToXyz(r, g, b) {
-        // Convert RGB to XYZ color space
-        r = r / 255;
-        g = g / 255;
-        b = b / 255;
-
-        r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-        g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-        b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
-
-        r *= 100;
-        g *= 100;
-        b *= 100;
-
-        const x = r * 0.4124 + g * 0.3576 + b * 0.1805;
-        const y = r * 0.2126 + g * 0.7152 + b * 0.0722;
-        const z = r * 0.0193 + g * 0.1192 + b * 0.9505;
-
-        return { x, y, z };
-    }
-
-    xyzToLab(x, y, z) {
-        // Convert XYZ to LAB color space
-        const xn = 95.047; // D65 illuminant
-        const yn = 100.000;
-        const zn = 108.883;
-
-        x = x / xn;
-        y = y / yn;
-        z = z / zn;
-
-        x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x + 16/116);
-        y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y + 16/116);
-        z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z + 16/116);
-
-        const l = (116 * y) - 16;
-        const a = 500 * (x - y);
-        const b = 200 * (y - z);
-
-        return { l, a, b };
-    }
-
-    hexToLab(hex) {
-        const rgb = this.hexToRgbV2(hex);
-        if (!rgb) return null;
-        const xyz = this.rgbToXyz(rgb.r, rgb.g, rgb.b);
-        return this.xyzToLab(xyz.x, xyz.y, xyz.z);
-    }
-
-    deltaE76(lab1, lab2) {
-        // Calculate color difference using CIE76 formula
-        if (!lab1 || !lab2) return Infinity;
-        const deltaL = lab1.l - lab2.l;
-        const deltaA = lab1.a - lab2.a;
-        const deltaB = lab1.b - lab2.b;
-        return Math.sqrt(deltaL * deltaL + deltaA * deltaA + deltaB * deltaB);
-    }
-
-    nearestPaletteColorV2(fromHex, paletteHexes) {
-        const fromLab = this.hexToLab(fromHex);
-        if (!fromLab) return { color: fromHex, d: 0 }; // Return original if can't convert
-        
-        let best = null;
-        for (const p of paletteHexes) {
-            const pLab = this.hexToLab(p);
-            if (!pLab) continue; // Skip invalid palette colors
-            const d = this.deltaE76(fromLab, pLab);
-            if (!best || d < best.d) best = { color: p, d };
-        }
-        return best || { color: fromHex, d: 0 }; // Fallback to original
-    }
 
     collectColorsFromStyleAttr(style) {
         const colors = [];
         if (!style) return colors;
-        
+
         const props = ['fill', 'stroke', 'stop-color'];
         for (const prop of props) {
             const regex = new RegExp(`${prop}\\s*:\\s*([^;]+)`, 'gi');
             let match;
             while ((match = regex.exec(style)) !== null) {
-                const value = this.normalizeColor(match[1].trim());
+                const value = normalizeColor(match[1].trim());
                 if (value) {
                     colors.push({ prop, value });
                 }
@@ -698,23 +606,7 @@ class InteractiveSVGRecolorApp {
         return colors;
     }
 
-    setOrUpdateStyleProp(styleValue, prop, newColor) {
-        const decls = styleValue
-            ? styleValue.split(';').map(s => s.trim()).filter(Boolean)
-            : [];
-        let replaced = false;
-        const out = decls.map(d => {
-            const m = d.match(/^([a-z-]+)\s*:\s*(.+)$/i);
-            if (!m) return d;
-            if (m[1].toLowerCase() === prop.toLowerCase()) {
-                replaced = true;
-                return `${prop}:${newColor}`;
-            }
-            return d;
-        });
-        if (!replaced) out.push(`${prop}:${newColor}`);
-        return out.join('; ');
-    }
+
 
     gatherDetectedColorsV2(svgDoc) {
         const colors = new Set();
@@ -722,7 +614,7 @@ class InteractiveSVGRecolorApp {
         for (const el of all) {
             for (const attr of ['fill', 'stroke', 'stop-color']) {
                 const v = el.getAttribute(attr);
-                const n = this.normalizeColor(v);
+                const n = normalizeColor(v);
                 if (n) colors.add(n);
             }
             const style = el.getAttribute('style');
@@ -739,18 +631,18 @@ class InteractiveSVGRecolorApp {
         const fromColors = this.gatherDetectedColorsV2(svgDoc);
         const mapping = new Map();
         const distances = new Map();
-        
+
         for (const c of fromColors) {
-            const best = this.nearestPaletteColorV2(c, paletteHexes);
+            const best = findNearestColorV2(c, paletteHexes);
             mapping.set(c, best.color);
-            distances.set(c, best.d);
+            distances.set(c, best.distance);
         }
 
         const all = svgDoc.querySelectorAll('*');
         for (const el of all) {
             for (const attr of ['fill', 'stroke', 'stop-color']) {
                 const v = el.getAttribute(attr);
-                const n = this.normalizeColor(v);
+                const n = normalizeColor(v);
                 if (n && mapping.has(n)) el.setAttribute(attr, mapping.get(n));
             }
 
@@ -763,7 +655,7 @@ class InteractiveSVGRecolorApp {
                     );
                     for (const it of items) {
                         if (mapping.has(it.value)) {
-                            next = this.setOrUpdateStyleProp(next, prop, mapping.get(it.value));
+                            next = setOrUpdateStyleProp(next, prop, mapping.get(it.value));
                         }
                     }
                 }
@@ -780,38 +672,33 @@ class InteractiveSVGRecolorApp {
             return;
         }
 
-        try {
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(this.originalSVG, 'image/svg+xml');
-            
-            const result = this.recolorSvgDocV2(svgDoc, this.palette);
-            
-            this.currentSVG = new XMLSerializer().serializeToString(svgDoc);
-            this.displayInteractiveSVG();
-            
-            this.colorStatus.innerHTML = `
-                <span class="current-selection">Auto Recolored V2:</span> 
-                Applied ${result.mapping.size} advanced color mappings using LAB color space
-            `;
-        } catch (error) {
-            alert('Error during V2 recoloring: ' + error.message);
-            console.error('V2 Recoloring error:', error);
-        }
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
+
+        this.recolorSvgDocV2(svgDoc, this.palette);
+
+        this.currentSVG = new XMLSerializer().serializeToString(svgDoc);
+        this.displayInteractiveSVG();
+
+        this.colorStatus.innerHTML = `
+            <span class="current-selection">Auto Recolored (V2):</span> 
+            Applied perceptual color matching to palette
+        `;
     }
 
     updateOutput() {
         if (!this.currentSVG) return;
-        
+
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
         const svg = svgDoc.querySelector('svg');
-        
+
         const width = parseInt(this.outputWidth.value);
         const height = parseInt(this.outputHeight.value);
         const padding = parseInt(this.padding.value);
         const borderRadius = parseInt(this.borderRadius.value);
         const bgColor = this.backgroundColor.value;
-        
+
         const container = document.createElement('div');
         container.style.cssText = `
             width: ${width}px;
@@ -824,7 +711,7 @@ class InteractiveSVGRecolorApp {
             justify-content: center;
             overflow: hidden;
         `;
-        
+
         if (svg) {
             const svgClone = svg.cloneNode(true);
             svgClone.style.cssText = `
@@ -833,7 +720,7 @@ class InteractiveSVGRecolorApp {
                 width: auto;
                 height: auto;
             `;
-            
+
             // Clean up selection styles from the preview clone
             const cloneElements = svgClone.querySelectorAll('*');
             cloneElements.forEach(el => {
@@ -843,10 +730,10 @@ class InteractiveSVGRecolorApp {
                     el.style.outline = '';
                 }
             });
-            
+
             container.appendChild(svgClone);
         }
-        
+
         this.outputPreview.innerHTML = '';
         this.outputPreview.appendChild(container);
     }
@@ -856,21 +743,21 @@ class InteractiveSVGRecolorApp {
             alert('Please upload and modify an SVG first.');
             return;
         }
-        
+
         // Clear any selection before download
         this.clearSelection();
-        
+
         const width = parseInt(this.outputWidth.value);
         const height = parseInt(this.outputHeight.value);
         const padding = parseInt(this.padding.value);
         const borderRadius = parseInt(this.borderRadius.value);
         const bgColor = this.backgroundColor.value;
-        
+
         // Create a clean copy of the SVG without any selection artifacts
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
         const recoloredSvgElement = svgDoc.querySelector('svg');
-        
+
         // Clean up any selection classes or inline styles from the download copy
         const elements = svgDoc.querySelectorAll('*');
         elements.forEach(el => {
@@ -880,33 +767,33 @@ class InteractiveSVGRecolorApp {
                 el.style.outline = '';
             }
         });
-        
+
         if (!recoloredSvgElement) {
             alert('Error: Could not parse SVG.');
             return;
         }
-        
+
         let viewBox = recoloredSvgElement.getAttribute('viewBox');
         if (!viewBox) {
             const svgWidth = recoloredSvgElement.getAttribute('width') || '100';
             const svgHeight = recoloredSvgElement.getAttribute('height') || '100';
             viewBox = `0 0 ${svgWidth} ${svgHeight}`;
         }
-        
+
         const [, , intrinsicWidth, intrinsicHeight] = viewBox.split(' ').map(Number);
         const availableWidth = width - (padding * 2);
         const availableHeight = height - (padding * 2);
-        
+
         const scaleToFitWidth = availableWidth / intrinsicWidth;
         const scaleToFitHeight = availableHeight / intrinsicHeight;
         const finalScale = Math.min(scaleToFitWidth, scaleToFitHeight);
-        
+
         const finalSvgWidth = intrinsicWidth * finalScale;
         const finalSvgHeight = intrinsicHeight * finalScale;
-        
+
         const svgX = padding + (availableWidth - finalSvgWidth) / 2;
         const svgY = padding + (availableHeight - finalSvgHeight) / 2;
-        
+
         const finalSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
     <defs>
         <clipPath id="roundedCorners">
@@ -920,7 +807,7 @@ class InteractiveSVGRecolorApp {
         </svg>
     </g>
 </svg>`;
-        
+
         const blob = new Blob([finalSVG], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -940,18 +827,18 @@ class InteractiveSVGRecolorApp {
         this.selectedColor = null;
         this.elementColors.clear();
         this.currentColors.clear();
-        
+
         this.originalPreview.innerHTML = '<div class="preview-placeholder">No SVG uploaded</div>';
         this.outputPreview.innerHTML = '<div class="preview-placeholder">Recolored SVG will appear here</div>';
         this.colorStatus.innerHTML = 'Click on an SVG element to start recoloring';
-        
+
         this.outputWidth.value = '400';
         this.outputHeight.value = '400';
         this.padding.value = '24';
         this.borderRadius.value = '16';
         this.backgroundColor.value = '#EEEEFF';
         this.maintainAspect.value = 'true';
-        
+
         this.fileInput.value = '';
     }
 }

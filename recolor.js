@@ -13,39 +13,73 @@ import {
  * @param {boolean} removeFill - Whether to remove the fill and classes
  * @returns {Document} - The processed SVG document
  */
-export function processViewBoxFill(svgDoc, removeFill = true) {
-    if (!removeFill) return svgDoc;
+export function processViewBoxFill(svgDoc, removeFill = true, removeClasses = false) {
+    if (!removeFill && !removeClasses) return svgDoc;
 
     const svg = svgDoc.documentElement;
     if (!svg || svg.tagName.toLowerCase() !== 'svg') return svgDoc;
 
-    // Remove fill attribute if it exists and isn't 'none'
-    if (svg.hasAttribute('fill') && svg.getAttribute('fill') !== 'none') {
-        svg.removeAttribute('fill');
+    // Helper to process an element
+    const processElement = (el) => {
+        let processed = false;
+
+        // Remove fill if requested
+        if (removeFill) {
+            if (el.hasAttribute('fill') && el.getAttribute('fill') !== 'none') {
+                el.setAttribute('fill', 'none');
+                processed = true;
+            }
+
+            if (el.hasAttribute('style')) {
+                let style = el.getAttribute('style');
+                if (style.match(/fill:\s*[^;]+/)) {
+                    style = style
+                        .replace(/fill:\s*[^;]+;?/g, 'fill: none;')
+                        .replace(/fill-rule:\s*[^;]+;?/g, '')
+                        .replace(/;+/g, ';')
+                        .replace(/^;|;$/g, '')
+                        .trim();
+
+                    if (style) el.setAttribute('style', style);
+                    else el.removeAttribute('style');
+                    processed = true;
+                }
+            }
+        }
+
+        // Remove classes if requested
+        if (removeClasses && el.hasAttribute('class')) {
+            el.removeAttribute('class');
+            processed = true;
+        }
+
+        return processed;
+    };
+
+    // 1. Try the root SVG first
+    if (processElement(svg)) {
+        return svgDoc;
     }
 
-    // Remove class attribute if it exists
-    if (svg.hasAttribute('class')) {
-        svg.removeAttribute('class');
-    }
+    // 2. If root didn't have fill/class to process, look for the first rect
+    // BFS traversal to find the first rect
+    const queue = [svg];
+    while (queue.length > 0) {
+        const node = queue.shift();
 
-    // Process style attribute if it exists
-    if (svg.hasAttribute('style')) {
-        let style = svg.getAttribute('style');
+        if (node.tagName && node.tagName.toLowerCase() === 'rect') {
+            // Found a candidate background rect
+            if (processElement(node)) {
+                return svgDoc; // Stop after processing the first background-like element
+            }
+        }
 
-        // Remove fill, fill-rule, and class-related properties from style
-        style = style
-            .replace(/fill:\s*[^;]+;?/g, '')
-            .replace(/fill-rule:\s*[^;]+;?/g, '')
-            .replace(/\.?[a-z0-9_-]+\s*{[^}]*}/g, '')  // Remove any class-like definitions
-            .replace(/;+/g, ';')
-            .replace(/^;|;$/g, '')
-            .trim();
-
-        if (style) {
-            svg.setAttribute('style', style);
-        } else {
-            svg.removeAttribute('style');
+        if (node.childNodes) {
+            for (let i = 0; i < node.childNodes.length; i++) {
+                if (node.childNodes[i].nodeType === 1) { // Element node
+                    queue.push(node.childNodes[i]);
+                }
+            }
         }
     }
 
@@ -109,6 +143,7 @@ function gatherColors(svgDoc) {
  */
 export function recolorV1(svgString, palette, {
     removeViewBoxFill = true,
+    removeClasses = false,
     simplify = false,
     simplifyOptions = {}
 } = {}) {
@@ -130,9 +165,7 @@ export function recolorV1(svgString, palette, {
     const svgDoc = parser.parseFromString(processedSvgString, 'image/svg+xml');
 
     // Process viewbox fill if needed
-    if (removeViewBoxFill) {
-        processViewBoxFill(svgDoc, true);
-    }
+    processViewBoxFill(svgDoc, removeViewBoxFill, removeClasses);
 
     // Gather all colors from the SVG
     const detectedColors = gatherColors(svgDoc);
@@ -207,6 +240,7 @@ export function recolorV1(svgString, palette, {
  */
 export function recolorV2(svgString, palette, {
     removeViewBoxFill = true,
+    removeClasses = false,
     simplify = false,
     simplifyOptions = {}
 } = {}) {

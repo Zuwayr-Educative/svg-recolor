@@ -47,6 +47,7 @@ class InteractiveSVGRecolorApp {
         this.backgroundColor = document.getElementById('background-color');
         this.maintainAspect = document.getElementById('maintain-aspect');
         this.removeViewboxFill = document.getElementById('remove-viewbox-fill');
+        this.removeClasses = document.getElementById('remove-classes');
     }
 
     bindEvents() {
@@ -62,7 +63,9 @@ class InteractiveSVGRecolorApp {
         this.autoRecolorBtn.addEventListener('click', () => this.autoRecolorToPalette());
         this.autoRecolorV2Btn.addEventListener('click', () => this.autoRecolorV2ToPalette());
         this.restoreOriginalBtn.addEventListener('click', () => this.restoreOriginal());
+        this.restoreOriginalBtn.addEventListener('click', () => this.restoreOriginal());
         this.removeViewboxFill.addEventListener('change', () => this.displayInteractiveSVG());
+        this.removeClasses.addEventListener('change', () => this.displayInteractiveSVG());
 
         // Add click-outside detection to clear selection
         document.addEventListener('click', (e) => this.handleDocumentClick(e));
@@ -246,36 +249,91 @@ class InteractiveSVGRecolorApp {
         reader.readAsText(file);
     }
 
-    displayInteractiveSVG() {
-        let svgContent = this.currentSVG;
+    processSvgBackground(svgContent) {
+        if (!this.removeViewboxFill.checked && !this.removeClasses.checked) {
+            return svgContent;
+        }
 
-        // Remove viewbox fill if the option is enabled
-        if (this.removeViewboxFill.checked) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(svgContent, 'image/svg+xml');
-            const svg = doc.querySelector('svg');
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+        const svg = doc.querySelector('svg');
 
-            if (svg) {
-                // Remove fill from the root SVG element
-                if (svg.hasAttribute('fill') && svg.getAttribute('fill') !== 'none') {
-                    svg.removeAttribute('fill');
-                }
+        if (svg) {
+            const shouldRemoveFill = this.removeViewboxFill.checked;
+            const shouldRemoveClasses = this.removeClasses.checked;
 
-                // Also remove any style that might contain fill
-                if (svg.hasAttribute('style')) {
-                    let style = svg.getAttribute('style');
-                    style = style.replace(/fill:[^;]*;?/g, '');
-                    if (style.trim() === '') {
-                        svg.removeAttribute('style');
-                    } else {
-                        svg.setAttribute('style', style);
+            // Helper to process an element
+            const processElement = (el) => {
+                let processed = false;
+
+                // Set fill to none if requested
+                if (shouldRemoveFill) {
+                    if (el.hasAttribute('fill') && el.getAttribute('fill') !== 'none') {
+                        el.setAttribute('fill', 'none');
+                        processed = true;
+                    }
+
+                    if (el.hasAttribute('style')) {
+                        let style = el.getAttribute('style');
+                        if (style.match(/fill:\s*[^;]+/)) {
+                            style = style
+                                .replace(/fill:\s*[^;]+;?/g, 'fill: none;')
+                                .replace(/fill-rule:\s*[^;]+;?/g, '')
+                                .replace(/;+/g, ';')
+                                .replace(/^;|;$/g, '')
+                                .trim();
+
+                            if (style) el.setAttribute('style', style);
+                            else el.removeAttribute('style');
+                            processed = true;
+                        }
                     }
                 }
 
-                // Update the SVG content
-                svgContent = new XMLSerializer().serializeToString(doc.documentElement);
+                // Remove classes if requested
+                if (shouldRemoveClasses && el.hasAttribute('class')) {
+                    el.removeAttribute('class');
+                    processed = true;
+                }
+
+                return processed;
+            };
+
+            // 1. Try the root SVG first
+            if (!processElement(svg)) {
+                // 2. If root didn't have fill/class to process, look for the first rect
+                // BFS traversal to find the first rect
+                const queue = [svg];
+                let found = false;
+
+                while (queue.length > 0 && !found) {
+                    const node = queue.shift();
+
+                    if (node.tagName && node.tagName.toLowerCase() === 'rect') {
+                        // Found a candidate background rect
+                        if (processElement(node)) {
+                            found = true;
+                        }
+                    }
+
+                    if (!found && node.childNodes) {
+                        for (let i = 0; i < node.childNodes.length; i++) {
+                            if (node.childNodes[i].nodeType === 1) { // Element node
+                                queue.push(node.childNodes[i]);
+                            }
+                        }
+                    }
+                }
             }
+
+            return new XMLSerializer().serializeToString(doc.documentElement);
         }
+        return svgContent;
+    }
+
+    displayInteractiveSVG() {
+        // Apply background processing for display
+        const svgContent = this.processSvgBackground(this.currentSVG);
 
         this.originalPreview.innerHTML = svgContent;
         const svgElement = this.originalPreview.querySelector('svg');
@@ -696,8 +754,10 @@ class InteractiveSVGRecolorApp {
     updateOutput() {
         if (!this.currentSVG) return;
 
+        // Apply background processing for output
+        const processedSVG = this.processSvgBackground(this.currentSVG);
         const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
+        const svgDoc = parser.parseFromString(processedSVG, 'image/svg+xml');
         const svg = svgDoc.querySelector('svg');
 
         const width = parseInt(this.outputWidth.value);
@@ -761,8 +821,10 @@ class InteractiveSVGRecolorApp {
         const bgColor = this.backgroundColor.value;
 
         // Create a clean copy of the SVG without any selection artifacts
+        // And apply background processing
+        const processedSVG = this.processSvgBackground(this.currentSVG);
         const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
+        const svgDoc = parser.parseFromString(processedSVG, 'image/svg+xml');
         const recoloredSvgElement = svgDoc.querySelector('svg');
 
         // Clean up any selection classes or inline styles from the download copy

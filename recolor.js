@@ -1,5 +1,5 @@
 import { DOMParser, XMLSerializer } from 'xmldom';
-import { simplifySvg } from './simplifySvg.js';
+import { dumbifySvg } from './dumbifySvg.js';
 import {
     normalizeColor,
     findNearestColorV1,
@@ -118,9 +118,9 @@ export function recolorV1(svgString, palette, {
 
     // Simplify SVG if enabled
     const processedSvgString = simplify
-        ? simplifySvg(svgString, {
-            replaceGradients: true,
-            defaultColor: '#000000',
+        ? dumbifySvg(svgString, {
+            replacePaintServers: true,
+            defaultPaint: '#000000',
             keepViewBox: true,
             ...simplifyOptions
         })
@@ -216,9 +216,9 @@ export function recolorV2(svgString, palette, {
 
     // Simplify SVG if enabled
     const processedSvgString = simplify
-        ? simplifySvg(svgString, {
-            replaceGradients: true,
-            defaultColor: '#000000',
+        ? dumbifySvg(svgString, {
+            replacePaintServers: true,
+            defaultPaint: '#000000',
             keepViewBox: true,
             ...simplifyOptions
         })

@@ -26,6 +26,7 @@ npm start
 - 🎨 Create and manage custom color palettes
 - 📱 Responsive design that works on all devices
 - 💾 Export recolored SVGs with custom dimensions and styling
+- ⚡ **Smart Client-Side Optimization**: Automatically cleans up and standardizes SVGs (converting styles to attributes, flattening transforms) upon upload using a browser-compatible build of `svgo`.
 - 🎯 Preset color palettes for quick styling
 
 ### REST API
@@ -300,7 +301,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Vanilla JavaScript, HTML5, and CSS3
 - Client-side SVG parsing and manipulation
 - Drag-and-drop file upload
-- No external dependencies
+- No external dependencies (uses Import Maps for `svgo`)
+- **svgo** (browser build) for client-side SVG optimization
 
 ### API Server
 - **Fastify** - Fast and low overhead web framework

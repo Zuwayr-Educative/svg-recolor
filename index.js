@@ -4,6 +4,7 @@ import {
     findNearestColorV2,
     setOrUpdateStyleProp
 } from './color-utils.js';
+import { dumbifySvg } from './dumbifySvg.js';
 
 /**
  * Interactive SVG Recoloring App
@@ -180,8 +181,10 @@ class InteractiveSVGRecolorApp {
                     if (this.isBase64SVG(fileContent)) {
                         const decodedSVG = this.decodeBase64SVG(fileContent);
                         if (decodedSVG && decodedSVG.includes('<svg')) {
-                            this.originalSVG = decodedSVG;
-                            this.currentSVG = decodedSVG;
+                            // Run dumbifySvg on the content
+                            const optimizedSVG = dumbifySvg(decodedSVG, { replacePaintServers: true });
+                            this.originalSVG = optimizedSVG;
+                            this.currentSVG = optimizedSVG;
                             this.displayInteractiveSVG();
                             return;
                         }
@@ -189,8 +192,10 @@ class InteractiveSVGRecolorApp {
 
                     // If it's not base64 but contains SVG, use it directly
                     if (fileContent.includes('<svg')) {
-                        this.originalSVG = fileContent;
-                        this.currentSVG = fileContent;
+                        // Run dumbifySvg on the content
+                        const optimizedSVG = dumbifySvg(fileContent, { replacePaintServers: true });
+                        this.originalSVG = optimizedSVG;
+                        this.currentSVG = optimizedSVG;
                         this.displayInteractiveSVG();
                         return;
                     }
@@ -205,8 +210,10 @@ class InteractiveSVGRecolorApp {
                         const text = decoder.decode(new Uint8Array(binaryData));
 
                         if (text.includes('<svg')) {
-                            this.originalSVG = text;
-                            this.currentSVG = text;
+                            // Run dumbifySvg on the content
+                            const optimizedSVG = dumbifySvg(text, { replacePaintServers: true });
+                            this.originalSVG = optimizedSVG;
+                            this.currentSVG = optimizedSVG;
                             this.displayInteractiveSVG();
                         } else {
                             throw new Error('File does not contain valid SVG data');

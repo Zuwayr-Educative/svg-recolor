@@ -1,11 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive SVG Recoloring App</title>
     <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "svgo": "https://esm.sh/svgo@3.3.2"
+            }
+        }
+    </script>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -27,7 +36,8 @@
                 <div class="section">
                     <div class="section-title">Interactive Preview</div>
                     <div class="instruction-banner">
-                        💡 <span class="highlight">Click on any part</span> of the SVG below to select it, then choose a color from the palette!
+                        💡 <span class="highlight">Click on any part</span> of the SVG below to select it, then choose a
+                        color from the palette!
                     </div>
                     <div class="color-status" id="color-status">
                         Click on an SVG element to start recoloring
@@ -120,4 +130,5 @@
 
     <script type="module" src="index.js"></script>
 </body>
+
 </html>

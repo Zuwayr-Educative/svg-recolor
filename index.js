@@ -47,6 +47,7 @@ class InteractiveSVGRecolorApp {
         this.borderRadius = document.getElementById('border-radius');
         this.backgroundColor = document.getElementById('background-color');
         this.maintainAspect = document.getElementById('maintain-aspect');
+        this.optimizeSvg = document.getElementById('optimize-svg');
         this.removeViewboxFill = document.getElementById('remove-viewbox-fill');
         this.removeClasses = document.getElementById('remove-classes');
     }
@@ -187,10 +188,12 @@ class InteractiveSVGRecolorApp {
                     if (this.isBase64SVG(fileContent)) {
                         const decodedSVG = this.decodeBase64SVG(fileContent);
                         if (decodedSVG && decodedSVG.includes('<svg')) {
-                            // Run dumbifySvg on the content
-                            const optimizedSVG = dumbifySvg(decodedSVG, { replacePaintServers: true });
-                            this.originalSVG = optimizedSVG;
-                            this.currentSVG = optimizedSVG;
+                            // Conditionally run dumbifySvg based on checkbox
+                            const finalSVG = this.optimizeSvg.checked
+                                ? dumbifySvg(decodedSVG, { replacePaintServers: true })
+                                : decodedSVG;
+                            this.originalSVG = finalSVG;
+                            this.currentSVG = finalSVG;
                             this.displayInteractiveSVG();
                             return;
                         }
@@ -198,10 +201,12 @@ class InteractiveSVGRecolorApp {
 
                     // If it's not base64 but contains SVG, use it directly
                     if (fileContent.includes('<svg')) {
-                        // Run dumbifySvg on the content
-                        const optimizedSVG = dumbifySvg(fileContent, { replacePaintServers: true });
-                        this.originalSVG = optimizedSVG;
-                        this.currentSVG = optimizedSVG;
+                        // Conditionally run dumbifySvg based on checkbox
+                        const finalSVG = this.optimizeSvg.checked
+                            ? dumbifySvg(fileContent, { replacePaintServers: true })
+                            : fileContent;
+                        this.originalSVG = finalSVG;
+                        this.currentSVG = finalSVG;
                         this.displayInteractiveSVG();
                         return;
                     }
@@ -216,10 +221,12 @@ class InteractiveSVGRecolorApp {
                         const text = decoder.decode(new Uint8Array(binaryData));
 
                         if (text.includes('<svg')) {
-                            // Run dumbifySvg on the content
-                            const optimizedSVG = dumbifySvg(text, { replacePaintServers: true });
-                            this.originalSVG = optimizedSVG;
-                            this.currentSVG = optimizedSVG;
+                            // Conditionally run dumbifySvg based on checkbox
+                            const finalSVG = this.optimizeSvg.checked
+                                ? dumbifySvg(text, { replacePaintServers: true })
+                                : text;
+                            this.originalSVG = finalSVG;
+                            this.currentSVG = finalSVG;
                             this.displayInteractiveSVG();
                         } else {
                             throw new Error('File does not contain valid SVG data');
@@ -275,22 +282,46 @@ class InteractiveSVGRecolorApp {
                         el.setAttribute('fill', 'none');
                         processed = true;
                     }
+                    if (el.hasAttribute('stroke') && el.getAttribute('stroke') !== 'none') {
+                        el.setAttribute('stroke', 'none');
+                        processed = true;
+                    }
 
                     if (el.hasAttribute('style')) {
                         let style = el.getAttribute('style');
-                        if (style.match(/fill:\s*[^;]+/)) {
+
+                        const hasFill = /fill:\s*[^;]+/i.test(style);
+                        const hasStroke = /stroke:\s*[^;]+/i.test(style);
+
+                        if (hasFill || hasStroke) {
                             style = style
-                                .replace(/fill:\s*[^;]+;?/g, 'fill: none;')
-                                .replace(/fill-rule:\s*[^;]+;?/g, '')
+                                // remove fill + related
+                                .replace(/fill:\s*[^;]+;?/gi, 'fill: none;')
+                                .replace(/fill-rule:\s*[^;]+;?/gi, '')
+                                .replace(/fill-opacity:\s*[^;]+;?/gi, '')
+
+                                // remove stroke + related
+                                .replace(/stroke:\s*[^;]+;?/gi, 'stroke: none;')
+                                .replace(/stroke-width:\s*[^;]+;?/gi, '')
+                                .replace(/stroke-linecap:\s*[^;]+;?/gi, '')
+                                .replace(/stroke-linejoin:\s*[^;]+;?/gi, '')
+                                .replace(/stroke-miterlimit:\s*[^;]+;?/gi, '')
+                                .replace(/stroke-dasharray:\s*[^;]+;?/gi, '')
+                                .replace(/stroke-dashoffset:\s*[^;]+;?/gi, '')
+                                .replace(/stroke-opacity:\s*[^;]+;?/gi, '')
+
+                                // cleanup
                                 .replace(/;+/g, ';')
                                 .replace(/^;|;$/g, '')
                                 .trim();
 
                             if (style) el.setAttribute('style', style);
                             else el.removeAttribute('style');
+
                             processed = true;
                         }
                     }
+
                 }
 
                 // Remove classes if requested

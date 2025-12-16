@@ -113,14 +113,19 @@ export function dumbifySvg(svgString, opts = {}) {
     multipass: true,
     plugins: [
       // Keep viewBox (many tools need it)
-      { name: "preset-default", params: { overrides: { removeViewBox: !keepViewBox } } },
+      // Note: removeViewBox is not in preset-default in newer SVGO, so we don't need to override it.
+      // If we wanted to enforce removal, we'd add it separately, but we default to keeping it.
+      "preset-default",
 
-      // Make styles editable
+      // Make styles editable (inline CSS classes to style attributes), which HELPS foreignObject compatibility
       { name: "inlineStyles", params: { onlyMatchedOnce: false } },
-      "convertStyleToAttrs",
+
+      // DISABLED: This plugin breaks foreignObject HTML by renaming "style" props (display: flex) 
+      // to invalid SVG attributes (display="flex").
+      // "convertStyleToAttrs",
 
       // Make references concrete
-      "reusePaths",   // helps sometimes, but combined with inline styles still OK
+      "reusePaths",
       "removeUselessDefs",
       "cleanupIds",
 
@@ -131,11 +136,6 @@ export function dumbifySvg(svgString, opts = {}) {
 
       // Optional lossy paint-server replacement
       ...(replacePaintServers ? [replaceUrlPaintPlugin] : []),
-
-      // These can *improve* editability in some editors by reducing weird group behavior
-      // but can also change visuals; toggle if needed:
-      // "removeUnknownsAndDefaults",
-      // "removeHiddenElems",
     ],
   });
 

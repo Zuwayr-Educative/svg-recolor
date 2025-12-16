@@ -2,6 +2,7 @@ import {
     normalizeColor,
     findNearestColorV1,
     findNearestColorV2,
+    findNearestColorV3,
     setOrUpdateStyleProp
 } from './color-utils.js';
 import { dumbifySvg } from './dumbifySvg.js';
@@ -62,6 +63,8 @@ class InteractiveSVGRecolorApp {
         this.resetBtn.addEventListener('click', () => this.reset());
         this.autoRecolorBtn.addEventListener('click', () => this.autoRecolorToPalette());
         this.autoRecolorV2Btn.addEventListener('click', () => this.autoRecolorV2ToPalette());
+        this.autoRecolorV3Btn = document.getElementById('auto-recolor-v3-btn');
+        this.autoRecolorV3Btn.addEventListener('click', () => this.autoRecolorV3ToPalette());
         this.restoreOriginalBtn.addEventListener('click', () => this.restoreOriginal());
         this.restoreOriginalBtn.addEventListener('click', () => this.restoreOriginal());
         this.removeViewboxFill.addEventListener('change', () => this.displayInteractiveSVG());
@@ -570,6 +573,12 @@ class InteractiveSVGRecolorApp {
         const svgDoc = parser.parseFromString(this.originalSVG, 'image/svg+xml');
         const elements = svgDoc.querySelectorAll('*');
 
+
+        // RESET STATE: Always start from the original SVG to prevent compounding errors.
+        this.currentSVG = this.originalSVG;
+        // Re-extract colors to ensure we are mapping the ORIGINAL colors, not previously recolored ones.
+        this.extractColors();
+
         // Create color mapping
         const colorMap = new Map();
         Array.from(this.currentColors).forEach(originalColor => {
@@ -738,7 +747,8 @@ class InteractiveSVGRecolorApp {
         }
 
         const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(this.currentSVG, 'image/svg+xml');
+        // RESET: Parse the ORIGINAL SVG, not the current one.
+        const svgDoc = parser.parseFromString(this.originalSVG, 'image/svg+xml');
 
         this.recolorSvgDocV2(svgDoc, this.palette);
 
@@ -748,6 +758,64 @@ class InteractiveSVGRecolorApp {
         this.colorStatus.innerHTML = `
             <span class="current-selection">Auto Recolored (V2):</span> 
             Applied perceptual color matching to palette
+        `;
+    }
+
+    autoRecolorV3ToPalette() {
+        if (!this.originalSVG || this.palette.length === 0) {
+            alert('Please upload an SVG and set up your color palette first.');
+            return;
+        }
+
+        const parser = new DOMParser();
+        // RESET: Parse the ORIGINAL SVG
+        const svgDoc = parser.parseFromString(this.originalSVG, 'image/svg+xml');
+
+        // Reuse V2 recoloring logic but with V3 mapping
+        // We'll reimplement the gathering/mapping part slightly to use findNearestColorV3
+
+        const paletteHexes = this.palette;
+        const fromColors = this.gatherDetectedColorsV2(svgDoc);
+        const mapping = new Map();
+
+        // Use V3 matcher
+        for (const c of fromColors) {
+            const best = findNearestColorV3(c, paletteHexes); // Implemented in color-utils.js
+            mapping.set(c, best.color);
+        }
+
+        // Apply changes
+        const all = svgDoc.querySelectorAll('*');
+        for (const el of all) {
+            for (const attr of ['fill', 'stroke', 'stop-color']) {
+                const v = el.getAttribute(attr);
+                const n = normalizeColor(v);
+                if (n && mapping.has(n)) el.setAttribute(attr, mapping.get(n));
+            }
+
+            const style = el.getAttribute('style');
+            if (style) {
+                let next = style;
+                for (const prop of ['fill', 'stroke', 'stop-color']) {
+                    const items = this.collectColorsFromStyleAttr(next).filter(
+                        x => x.prop === prop
+                    );
+                    for (const it of items) {
+                        if (mapping.has(it.value)) {
+                            next = setOrUpdateStyleProp(next, prop, mapping.get(it.value));
+                        }
+                    }
+                }
+                el.setAttribute('style', next);
+            }
+        }
+
+        this.currentSVG = new XMLSerializer().serializeToString(svgDoc);
+        this.displayInteractiveSVG();
+
+        this.colorStatus.innerHTML = `
+            <span class="current-selection">Auto Recolored (V3):</span> 
+            Applied Color-Priority matching (Pastels -> Hues, White -> White)
         `;
     }
 

@@ -146,9 +146,9 @@ export function xyzToLab(x, y, z) {
     y = y / yn;
     z = z / zn;
 
-    x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x + 16/116);
-    y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y + 16/116);
-    z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z + 16/116);
+    x = x > 0.008856 ? Math.pow(x, 1 / 3) : (7.787 * x + 16 / 116);
+    y = y > 0.008856 ? Math.pow(y, 1 / 3) : (7.787 * y + 16 / 116);
+    z = z > 0.008856 ? Math.pow(z, 1 / 3) : (7.787 * z + 16 / 116);
 
     const l = (116 * y) - 16;
     const a = 500 * (x - y);
@@ -248,4 +248,86 @@ export function setOrUpdateStyleProp(styleValue, prop, newColor) {
     });
     if (!replaced) out.push(`${prop}:${newColor}`);
     return out.join('; ');
+}
+
+/**
+ * V3: "Weighted Recolor" - Prioritizes Hue/Chroma over Lightness.
+ * Useful for mapping pastel/light colors to their saturated palette counterparts
+ * instead of mapping them to white.
+ * V3: "Hue Priority Recolor" (LCH Space)
+ * Maps pastel/light colors to their saturated counterparts by prioritizing Hue Angle.
+ */
+export function findNearestColorV3(targetColor, palette) {
+    const fromLab = hexToLab(targetColor);
+    if (!fromLab) return { color: targetColor, distance: 0 };
+
+    // 1. Convert Input to LCH
+    const chromaIn = Math.sqrt(fromLab.a * fromLab.a + fromLab.b * fromLab.b);
+    const hueIn = (Math.atan2(fromLab.b, fromLab.a) * 180 / Math.PI + 360) % 360; // 0-360
+
+    // Thresholds
+    const GRAYSCALE_THRESHOLD_IN = 3; // Input is considered colored if chroma > 3 (Capture faint pastels)
+    const GRAYSCALE_THRESHOLD_PAL = 2; // Palette is considered grayscale if chroma < 2
+
+    const isInputGrayscale = chromaIn < GRAYSCALE_THRESHOLD_IN;
+    const isInputLight = fromLab.l > 60; // Bright input
+
+    let best = null;
+
+    for (const paletteColor of palette) {
+        const pLab = hexToLab(paletteColor);
+        if (!pLab) continue;
+
+        let d;
+
+        if (isInputGrayscale) {
+            // Rule A: Input is Grayscale (White/Gray/Black)
+            // Use standard Euclidean distance.
+            d = deltaE76(fromLab, pLab);
+        } else {
+            // Rule B: Input is Colored (e.g. Light Yellow)
+            const chromaPal = Math.sqrt(pLab.a * pLab.a + pLab.b * pLab.b);
+            const isPaletteGrayscale = chromaPal < GRAYSCALE_THRESHOLD_PAL;
+
+            if (isPaletteGrayscale) {
+                // Rule B1: Target is Grayscale.
+                // If Input is Light (Pastel), BAN White/Black/Gray. Must find a color.
+                if (isInputLight) {
+                    d = 100000; // Impossible
+                } else {
+                    // If Input is Dark (e.g. Dark Blue Text), allow Black.
+                    // But BAN White.
+                    if (pLab.l > 50) d = 100000; // Ban White
+                    else d = deltaE76(fromLab, pLab); // Allow Black
+                }
+            } else {
+                // Rule B2: Target is Colored.
+                // Use HUE DISTANCE primarily.
+                const huePal = (Math.atan2(pLab.b, pLab.a) * 180 / Math.PI + 360) % 360;
+
+                let deltaHue = Math.abs(hueIn - huePal);
+                if (deltaHue > 180) deltaHue = 360 - deltaHue;
+
+                // Weighted Score:
+                // Hue is king (weight 1.0).
+                // Lightness/Chroma differences are minimized (weight 0.1) to allow Pastel->Saturated mapping.
+                const deltaL = Math.abs(fromLab.l - pLab.l);
+
+                // Distance metric: Hue degrees + small penalty for L/C
+                d = deltaHue + (deltaL * 0.1);
+
+                // CRITICAL FIX: Prevent Light Colors (Sky Blue) from mapping to Dark Colors (Navy)
+                // just because the Hue is close.
+                if (isInputLight && pLab.l < 40) {
+                    d += 100; // Massive penalty for Light->Dark mapping
+                }
+            }
+        }
+
+        if (!best || d < best.distance) {
+            best = { color: paletteColor, distance: d };
+        }
+    }
+
+    return best || { color: targetColor, distance: 0 };
 }

@@ -4,6 +4,7 @@ import {
     normalizeColor,
     findNearestColorV1,
     findNearestColorV2,
+    findNearestColorV3,
     setOrUpdateStyleProp
 } from './color-utils.js';
 
@@ -200,7 +201,7 @@ export function recolorV1(svgString, palette, {
             let newStyle = style;
 
             for (const prop of ['fill', 'stroke', 'stop-color']) {
-                const regex = new RegExp(`${prop}\\s*:\\s*([^;]+)`, 'gi');
+                const regex = new RegExp(`${prop} \\s *: \\s * ([^;] +)`, 'gi');
                 let match;
                 while ((match = regex.exec(style)) !== null) {
                     const value = match[1].trim();
@@ -302,7 +303,106 @@ export function recolorV2(svgString, palette, {
             let newStyle = style;
 
             for (const prop of ['fill', 'stroke', 'stop-color']) {
-                const regex = new RegExp(`${prop}\\s*:\\s*([^;]+)`, 'gi');
+                const regex = new RegExp(`${prop} \\s *: \\s * ([^;] +)`, 'gi');
+                let match;
+                while ((match = regex.exec(style)) !== null) {
+                    const value = match[1].trim();
+                    if (value !== 'none' && value !== 'transparent') {
+                        const normalized = normalizeColor(value);
+                        const newColor = normalized ? colorMap.get(normalized.toLowerCase()) : null;
+                        if (newColor) {
+                            newStyle = setOrUpdateStyleProp(newStyle, prop, newColor);
+                        }
+                    }
+                }
+            }
+
+            if (newStyle !== style) {
+                el.setAttribute('style', newStyle);
+            }
+        }
+    }
+
+    const serializer = new XMLSerializer();
+    const result = serializer.serializeToString(svgDoc);
+
+    return {
+        svg: result,
+        mapping: Object.fromEntries(colorMap),
+        distances: Object.fromEntries(distances),
+        detectedColors
+    };
+}
+
+/**
+ * Recolor SVG using V3 algorithm (Weighted Hue/Chroma Priority)
+ * @param {string} svgString - The SVG content as a string
+ * @param {string[]} palette - Array of hex color codes
+ * @param {Object} [options] - Additional options
+ */
+export function recolorV3(svgString, palette, {
+    removeViewBoxFill = true,
+    removeClasses = false,
+    simplify = false,
+    simplifyOptions = {}
+} = {}) {
+    if (!palette || palette.length === 0) {
+        throw new Error('Palette is empty');
+    }
+
+    // Simplify SVG if enabled
+    const processedSvgString = simplify
+        ? dumbifySvg(svgString, {
+            replacePaintServers: true,
+            defaultPaint: '#000000',
+            keepViewBox: true,
+            ...simplifyOptions
+        })
+        : svgString;
+
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(processedSvgString, 'image/svg+xml');
+
+    // Process viewbox fill if needed
+    processViewBoxFill(svgDoc, removeViewBoxFill, removeClasses);
+
+    // Gather all colors from the SVG
+    const detectedColors = gatherColors(svgDoc);
+
+    // Create color mapping with V3 logic
+    const colorMap = new Map();
+    const distances = new Map();
+
+    detectedColors.forEach(originalColor => {
+        const result = findNearestColorV3(originalColor, palette);
+        colorMap.set(originalColor.toLowerCase(), result.color);
+        distances.set(originalColor.toLowerCase(), result.distance);
+    });
+
+    // Update all elements
+    const elements = svgDoc.getElementsByTagName('*');
+    for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+
+        // Handle fill, stroke, and stop-color attributes
+        for (const attr of ['fill', 'stroke', 'stop-color']) {
+            const value = el.getAttribute(attr);
+            if (value && value !== 'none' && value !== 'transparent') {
+                const normalized = normalizeColor(value);
+                const newColor = normalized ? colorMap.get(normalized.toLowerCase()) : null;
+                if (newColor) {
+                    el.setAttribute(attr, newColor);
+                }
+            }
+        }
+
+        // Handle style attribute
+        const style = el.getAttribute('style');
+        if (style) {
+            let newStyle = style;
+
+            for (const prop of ['fill', 'stroke', 'stop-color']) {
+                const regex = new RegExp(`${prop} \\s *: \\s * ([^;] +)`, 'gi');
                 let match;
                 while ((match = regex.exec(style)) !== null) {
                     const value = match[1].trim();

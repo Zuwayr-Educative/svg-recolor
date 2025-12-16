@@ -33,6 +33,7 @@ npm start
 - 🚀 Two intelligent recoloring algorithms:
   - **V1**: Fast RGB Euclidean distance matching
   - **V2**: Perceptually accurate LAB color space matching (CIE76 Delta E)
+  - **V3**: **Hue Priority** matching (LCH) - Specialized for pastels and illustrations
 - ⚡ High-performance Fastify server
 - 🌐 CORS enabled for web integrations
 - 📊 Rich metadata in response headers (color mappings, distances)
@@ -107,6 +108,8 @@ npm start
    - **Manual Recoloring**: Click on any element in the SVG, then choose a color from the palette
    - **Auto Recolor V1**: Fast RGB-based automatic color mapping to your palette
    - **Auto Recolor V2**: Advanced LAB color space for perceptually accurate color matching
+   - **Auto Recolor V3**: **Recommended for Illustrations**. Uses Hue Priority matching to correctly map pastels (e.g. Pale Yellow -> Yellow) and keep dark text legible.
+   - **Note**: Switching between modes automatically resets the image to its original state, so you can experiment freely.
 
 3. **Customize Output**
    - Adjust dimensions, padding, and background color
@@ -207,6 +210,17 @@ For complete API documentation, see [API.md](API.md)
 - **Best for**: Professional designs, brand colors, perceptually accurate matching
 - **Advantage**: Matches how humans perceive color differences
 
+### V3: Hue Priority (LCH)
+- **Method**: Weighted Hue Angle matching in LCH space
+- **Process**: Prioritizes Hue above Lightness/Chroma for colored inputs
+- **Best for**:
+  - **Pastels**: Maps "Pale Red" -> "Red" instead of "White"
+  - **Charts/Diagrams**: Preserves meaning of colors even if shades differ
+  - **Text**: Ensures dark lines map to Black instead of bright colors
+- **Special Features**:
+  - **Light-to-Dark Penalty**: Prevents Sky Blue from mapping to Navy Blue
+  - **White Preservation**: Strictly keeps whites white
+
 ## Development
 
 ### Web Application
@@ -258,14 +272,16 @@ recolor-svg/
 ├── test-recolor.js      # Unit tests for recolor module
 └── testing/             # Test files
     ├── dumbifySvg.js    # SVG simplification utility
-    └── run-op.js        # Test runner
+    └── run_test_suite.js # Master test suite (V3 logic, backgrounds, etc)
 ```
 
 ### Testing
 
 Test the recolor module directly:
 ```bash
-node test-recolor.js
+Test the simplified consolidated suite:
+```bash
+node run_test_suite.js
 ```
 
 Test the API endpoints:
@@ -313,6 +329,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### Color Science
 - RGB Euclidean distance (V1)
 - CIE76 Delta E in LAB color space (V2)
+- LCH Hue Angle Priority (V3)
 - XYZ color space intermediate conversion
 - Support for hex, RGB, and named color formats
 
